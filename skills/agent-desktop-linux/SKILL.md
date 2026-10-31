@@ -184,7 +184,10 @@ ref action outlines its target, and `--label` text appears on a card beside
 the dart once it lands. After about 6 seconds without an action the cursor
 fades out, and the next action brings it back. The card's text uses the
 system's sans-serif face (`fc-match sans-serif`, else DejaVu, Liberation or
-Noto Sans); with no readable face the card is not drawn.
+Noto Sans); with no readable face the card is not drawn while the dart,
+ripple and outline still are. Nothing in the response says so: `enable` still
+returns `data.rendered: true`, because the cursor overlay answers only whether
+it draws at all.
 
 On both, `--image` or `--pointer-image` gives `data.rendered: false`. A
 `--headed` command hides the cursor while it dispatches and shows it again
@@ -200,6 +203,9 @@ On wlroots:
 - The arrow is a surface on the overlay layer with no keyboard focus and an
   empty input region: clicks and hover reach the window beneath, activation
   does not change, and `list-windows` does not list it.
+- labwc draws its own menus, such as the root menu a click on the bare desktop
+  opens at the click point, above every layer-shell surface, so such a menu
+  covers the dart while it is open.
 - A second `agent-desktop` process per session holds it. That process exits
   on `cursor-overlay disable` and `session end`, when the session ends or its
   overlay is turned off, and when the compositor exits.
