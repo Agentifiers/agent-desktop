@@ -112,7 +112,7 @@ class SessionTests(unittest.TestCase):
         self.assertIn(TIER, main.TIER_CHOICES)
         self.assertIn(TIER, session._INNER_WRAPPERS)
         labwc = [leg for leg in legs.REGISTRY if leg.id.startswith("labwc.")]
-        self.assertEqual(len(labwc), 17)
+        self.assertEqual(len(labwc), 20)
         self.assertTrue(all(leg.tiers == (TIER,) for leg in labwc))
         self.assertTrue(all(leg.id in legs.implementations() for leg in labwc))
         self.assertFalse([leg.id for leg in legs.REGISTRY
@@ -343,30 +343,29 @@ def _painted(points: dict[tuple[int, int], tuple[int, int, int]]):
 
 
 class OverlayOracleTests(unittest.TestCase):
-    ARROW = {(0, 0): labwc_overlay.RIM, (0, 12): labwc_overlay.RIM,
-             (3, 12): labwc_overlay.FILL, (12, 22): labwc_overlay.FILL}
+    def _dart(self, origin, fill=40, rim=40):
+        x, y = origin[0] - 1, origin[1] - 5
+        points = {(x + 2 + i % 20, y + 10 + i // 20): labwc_overlay.FILL for i in range(fill)}
+        points.update({(x + 2 + i % 20, y + 25 + i // 20): labwc_overlay.RIM for i in range(rim)})
+        return points
 
-    def _at(self, origin):
-        return {(origin[0] + dx, origin[1] + dy): colour
-                for (dx, dy), colour in self.ARROW.items()}
+    def test_the_dart_is_found_only_around_its_tip(self):
+        image = _painted(self._dart((10, 8)))
+        self.assertTrue(labwc_overlay.marker_at(image, (10, 8)))
+        self.assertTrue(labwc_overlay.marker_near(image, (14, 11)))
+        self.assertFalse(labwc_overlay.marker_at(image, (40, 40)))
 
-    def test_the_arrow_is_found_only_with_its_tip_on_the_point(self):
-        image = _painted(self._at((10, 5)))
-        self.assertTrue(labwc_overlay.marker_at(image, (10, 5)))
-        self.assertFalse(labwc_overlay.marker_at(image, (11, 5)))
-        self.assertTrue(labwc_overlay.marker_near(image, (12, 7)))
-        self.assertFalse(labwc_overlay.marker_near(image, (20, 7)))
+    def test_too_little_body_or_rim_is_not_the_dart(self):
+        self.assertFalse(labwc_overlay.marker_at(_painted({}), (10, 8)))
+        self.assertFalse(labwc_overlay.marker_at(_painted(self._dart((10, 8), fill=10)), (10, 8)))
+        self.assertFalse(labwc_overlay.marker_at(_painted(self._dart((10, 8), rim=10)), (10, 8)))
 
-    def test_a_bare_or_partial_arrow_is_not_the_marker(self):
-        self.assertFalse(labwc_overlay.marker_at(_painted({}), (10, 5)))
-        for missing in self.ARROW:
-            partial = self._at((10, 5))
-            del partial[(10 + missing[0], 5 + missing[1])]
-            self.assertFalse(labwc_overlay.marker_at(_painted(partial), (10, 5)), missing)
-
-    def test_an_arrow_cut_off_by_the_output_edge_is_not_read(self):
-        image = _painted(self._at((50, 40)))
-        self.assertFalse(labwc_overlay.marker_at(image, (50, 40)))
+    def test_ripple_and_rim_centre_are_read_from_their_colours(self):
+        blue = {(30 + i % 8, 30 + i // 8): (66, 153, 255) for i in range(64)}
+        self.assertEqual(labwc_overlay.ripple_pixels(_painted(blue), (32, 32)), 64)
+        self.assertEqual(labwc_overlay.ripple_pixels(_painted({}), (32, 32)), 0)
+        self.assertEqual(labwc_overlay.rim_centre(_painted(self._dart((10, 8)))), (20.5, 28.5))
+        self.assertIsNone(labwc_overlay.rim_centre(_painted({})))
 
     def test_helpers_are_found_by_session_and_runtime_directory(self):
         tier = SimpleNamespace(runtime_dir=Path("/rt/a"))

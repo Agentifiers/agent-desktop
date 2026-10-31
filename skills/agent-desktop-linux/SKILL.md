@@ -56,7 +56,7 @@ every other Wayland compositor.
 | Wait | `wait` | Works for ms, `--element`, `--window`, `--text`, `--menu`, `--menu-closed`, `--event`. Menu waits share the menu-surface detector; `--notification` waits for a new notification on GNOME |
 | Notifications | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` | GNOME Shell only; list headless, mutations `--headed` on X11, and `dismiss-notification` and `notification-action` also need `--expected-app` or `--expected-title`. Fields are read from the shell's widget layout, verified on GNOME Shell 46.0 only, and each mutation is proven by its effect. Wayland refuses the shell pointer before input. A notification owner that is not the shell or its own helper returns `PLATFORM_NOT_SUPPORTED`. See the shell reference |
 | Shell surfaces | `open-system-surface` | Only `system-tray` and `action-center` can work. `system-tray` needs a StatusNotifierWatcher (else it refuses with `watcher: absent`); `action-center` needs proven role ancestry. `quick-settings` refuses with `shell_container_unproven`, `taskbar` always refuses, and `start-menu` and `system-tray-overflow` are not supported, though `--help` lists them. See the shell reference |
-| Cursor overlay | `cursor-overlay` | Requires an active session; see Cursor overlay below. X11 and wlroots with `zwlr_layer_shell_v1` (labwc) enable returns `data.rendered: true`; GNOME Wayland saves the setting with `data.rendered: false` |
+| Cursor overlay | `cursor-overlay` | Requires an active session; see Cursor overlay below. X11 and wlroots with `zwlr_layer_shell_v1` (labwc) enable returns `data.rendered: true` (wlroots adds motion, click ripple and label card); GNOME Wayland saves the setting with `data.rendered: false` |
 | System | `status`, `permissions`, `version`, `batch`, `skills`, `session`, `trace` | Works. `permissions` reports `screen_recording: not_required` on X11 and on wlroots with screencopy |
 
 On labwc the two tested versions differ only where a protocol is missing:
@@ -71,7 +71,7 @@ labwc 0.9.8 lacks `ext_foreign_toplevel_image_capture_source_manager_v1`.
 | `move-window`, `resize-window` | Refused, `wlroots_no_geometry_control` | Refused, `wlroots_no_geometry_control` |
 | `screenshot --app`/`--window-id` | Works | Refused, `PLATFORM_NOT_SUPPORTED` |
 | Headed ref pointer actions | Active maximized or fullscreen window, or any window whose pixels are found | Active maximized or fullscreen window only; otherwise refused, `wlroots_window_origin_unproven` |
-| `cursor-overlay` | Drawn; ref actions mark their target wherever headed ref pointer actions can aim | Drawn; ref actions mark their target only on an active maximized or fullscreen window |
+| `cursor-overlay` | Glide, click ripple, target outline and label card; ref actions mark their target wherever headed ref pointer actions can aim | Same look; ref actions mark their target only on an active maximized or fullscreen window |
 
 ## First Contact
 
@@ -172,13 +172,24 @@ returns `data.rendered: true`. On GNOME Wayland, or a compositor without a
 layer shell, it saves the setting and returns `data.rendered: false` without
 drawing an overlay.
 
-Both draw one white arrow with a dark rim. Its tip jumps, without animation,
-to each point a pointer command acts on and to the target of a ref action.
-Labels, ripples and highlights are not drawn; `--image` or `--pointer-image`
-gives `data.rendered: false`. A `--headed` command hides the arrow while it
-dispatches and shows it again afterwards. `screenshot` hides it during the
-capture, so it is never in the image; other screen readers such as `grim` see
-it.
+On X11 the overlay is a plain white arrow with a dark rim whose tip jumps,
+without animation, to each point a pointer command acts on and to the target
+of a ref action; labels, ripples and highlights are not drawn there.
+
+On wlroots it looks and moves like the macOS and Windows overlays: the dart
+glides along a hand-like path to each point (`--travel-ms`, `--bow`,
+`--overshoot`, `--tremor`, `--dwell-ms` and `--motion-seed` shape it), the
+action waits until the dart has arrived, a click plays the accent ripple, a
+ref action outlines its target, and `--label` text appears on a card beside
+the dart once it lands. After about 6 seconds without an action the cursor
+fades out, and the next action brings it back. The card's text uses the
+system's sans-serif face (`fc-match sans-serif`, else DejaVu, Liberation or
+Noto Sans); with no readable face the card is not drawn.
+
+On both, `--image` or `--pointer-image` gives `data.rendered: false`. A
+`--headed` command hides the cursor while it dispatches and shows it again
+afterwards. `screenshot` hides it during the capture, so it is never in the
+image; other screen readers such as `grim` see it.
 
 On wlroots:
 

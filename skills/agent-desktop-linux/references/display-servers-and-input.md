@@ -285,10 +285,11 @@ makes the compositor release every key and button the device still holds.
   a keyboard gives no window `ACTIVE`; `focus-window` attaches a virtual
   keyboard that sends no key so the frame can report it.
 - **Cursor overlay.** Drawn when the compositor offers `zwlr_layer_shell_v1`
-  (both labwc versions): a click-through arrow on the overlay layer, held by a
-  per-session `agent-desktop` helper process. Its tip moves to each pointer
-  point and to each ref target whose window place is proven; an unproven
-  target is not marked. See the Cursor overlay section of `SKILL.md`.
+  (both labwc versions): a click-through dart on the overlay layer, held by a
+  per-session `agent-desktop` helper process, that glides to each pointer
+  point and to each ref target whose window place is proven, with the click
+  ripple, target outline and label card of the macOS and Windows overlays.
+  An unproven target is not marked. See the Cursor overlay section of `SKILL.md`.
 - **Unavailable.** `key-down`, `key-up`, `mouse-down` and `mouse-up` fail closed
   as on every platform.
 

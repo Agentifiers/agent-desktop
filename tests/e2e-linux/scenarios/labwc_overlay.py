@@ -3,9 +3,11 @@ output through grim, its helper from /proc, and every effect beneath it through 
 from __future__ import annotations
 
 import tempfile
+import threading
 from pathlib import Path
 
 from oracle import atspi_raw as raw, pixels, proc, wlr
+from oracle.gsettings import tool
 from runner.apps import stop
 from runner.helper import changed, command, require
 from runner.legs import implementation
@@ -17,28 +19,76 @@ from scenarios.labwc_windows import active_facts, frame_facts
 
 RIM = (17, 19, 24)
 FILL = (255, 255, 255)
-MARKER = (24, 32)
+GLYPH = (32, 40)
+BUBBLE = (232, 38)
+RIPPLE = 54
+INK = 30
 FIRST = (200, 150)
 SECOND = (900, 450)
 PARK = (1200, 650)
 HELPER_SESSION_ENV = "AGENT_DESKTOP_WLR_CURSOR_SESSION"
-NEAR_PX = 3
+NEAR_PX = 4
 SETTLE_S = 5.0
 
 
-def marker_at(image: pixels.Image, point: tuple[int, int]) -> bool:
-    """Whether the default arrow's tip sits on `point`: rim at the tip and down its left edge,
-    fill inside the body."""
-    x, y = point
-    if x < 0 or y < 0 or x + MARKER[0] > image.width or y + MARKER[1] > image.height:
-        return False
-    return (image.pixel(x, y) == RIM and image.pixel(x, y + 12) == RIM
-            and image.pixel(x + 3, y + 12) == FILL and image.pixel(x + 12, y + 22) == FILL)
+def _count(image: pixels.Image, box: tuple[int, int, int, int], colour) -> int:
+    x, y, width, height = box
+    left, top = max(x, 0), max(y, 0)
+    right, bottom = min(x + width, image.width), min(y + height, image.height)
+    return sum(1 for row in range(top, bottom) for column in range(left, right)
+               if image.pixel(column, row) == colour)
+
+
+def glyph_box(point: tuple[int, int], slack: int = 0) -> tuple[int, int, int, int]:
+    """The dart's box with its tip on `point`: the dart is drawn in a 32x40 box whose tip
+    sits 1 right and 5 down from the box's corner."""
+    return (point[0] - 1 - slack, point[1] - 5 - slack, GLYPH[0] + 2 * slack,
+            GLYPH[1] + 2 * slack)
+
+
+def marker_at(image: pixels.Image, point: tuple[int, int], slack: int = 0) -> bool:
+    """Whether the default dart - white body inside a dark rim - is drawn with its tip on
+    `point`, give or take `slack` pixels."""
+    box = glyph_box(point, slack)
+    return _count(image, box, FILL) >= INK and _count(image, box, RIM) >= INK
 
 
 def marker_near(image: pixels.Image, point: tuple[int, int], radius: int = NEAR_PX) -> bool:
-    return any(marker_at(image, (point[0] + dx, point[1] + dy))
-               for dx in range(-radius, radius + 1) for dy in range(-radius, radius + 1))
+    return marker_at(image, point, radius)
+
+
+def rim_centre(image: pixels.Image) -> tuple[float, float] | None:
+    """The centre of every rim-coloured pixel on the output, for a desktop that shows nothing
+    else in that colour."""
+    found = [(column, row) for row in range(image.height) for column in range(image.width)
+             if image.pixel(column, row) == RIM]
+    if len(found) < INK:
+        return None
+    xs, ys = [x for x, _ in found], [y for _, y in found]
+    return ((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2)
+
+
+def ripple_pixels(image: pixels.Image, point: tuple[int, int]) -> int:
+    """Accent-blue pixels in the ripple's 108-pixel box around `point`."""
+    x, y = point
+    count = 0
+    for row in range(max(y - RIPPLE, 0), min(y + RIPPLE, image.height)):
+        for column in range(max(x - RIPPLE, 0), min(x + RIPPLE, image.width)):
+            red, _, blue = image.pixel(column, row)
+            count += blue > 100 and blue > red + 60
+    return count
+
+
+def card(image: pixels.Image, point: tuple[int, int]) -> tuple[int, int]:
+    """Opaque white card pixels and dark ink pixels inside the label card that core places
+    18 pixels right of and below `point`."""
+    box = (point[0] + 18 + 3, point[1] + 18 + 3, BUBBLE[0] - 6, BUBBLE[1] - 6)
+    white = _count(image, box, FILL)
+    x, y, width, height = box
+    ink = sum(1 for row in range(y, y + height) for column in range(x, x + width)
+              if 0 <= column < image.width and 0 <= row < image.height
+              and max(image.pixel(column, row)) < 160)
+    return white, ink
 
 
 def helpers(ctx: LegContext, session_id: str) -> list[int]:
@@ -166,7 +216,7 @@ def cursor_overlay_click_passes_through(ctx: LegContext) -> None:
 @implementation("labwc.cursor_overlay_hidden_from_screenshots")
 def cursor_overlay_hidden_from_screenshots(ctx: LegContext) -> None:
     baseline = screen(ctx)
-    region = (*FIRST, *MARKER)
+    region = glyph_box(FIRST)
     on_output = lambda: marker_at(screen(ctx), FIRST)
     ctx.before("pixels.marker_on_output", on_output())
     session_id = start_session(ctx, cursor=True)
@@ -210,7 +260,7 @@ def cursor_overlay_semantic_marks_proven_only(ctx: LegContext) -> None:
         place = lambda: (marker_at(screen(ctx), PARK), marker_near(screen(ctx), target))
         before = read()
         ctx.before("atspi.display", before)
-        ctx.before("pixels.marker_place", place())
+        ctx.before("pixels.marker_place", place()[1])
         session_id = start_session(ctx, cursor=True)
         move(ctx, session_id, PARK)
         require(raw.poll(lambda: place() == (True, False), SETTLE_S),
@@ -218,16 +268,123 @@ def cursor_overlay_semantic_marks_proven_only(ctx: LegContext) -> None:
         ref = session_ref(ctx, app, session_id, "7")
         command(ctx, ["--session", session_id, "click", ref], headed=False)
         ctx.after("atspi.display", changed(read, "7"))
-        expected = (False, True) if proven else (True, False)
-        settled = raw.poll(lambda: place() == expected, SETTLE_S)
-        ctx.after("pixels.marker_place", place())
-        require(settled, f"marker (parked, on target) is {place()}, expected {expected} when "
+        expected = (False, True) if proven else (None, False)
+        matches = lambda: all(seen == want for seen, want in zip(place(), expected)
+                              if want is not None)
+        settled = raw.poll(matches, SETTLE_S, floor_s=0.0 if proven else 1.0)
+        ctx.after("pixels.marker_place", place()[1])
+        require(settled and (proven or not place()[1]), f"marker (parked, on target) is {place()}, expected {expected} when "
                          f"the window's place is {'proven' if proven else 'unproven'}")
         disable_and_reap(ctx, session_id)
         _clear_calculator(root)
         ctx.restored("atspi.display", changed(read, before))
-        ctx.restored("pixels.marker_place", place())
+        ctx.restored("pixels.marker_place", place()[1])
     finally:
         if session_id is not None:
             end_session(ctx, session_id)
         stop(app)
+
+
+class Sampler:
+    """Captures the output again and again on a thread until stopped, for effects that last
+    only a moment. Captures are decoded only after sampling ends, so decoding never slows
+    the sampling down."""
+
+    def __init__(self, ctx: LegContext):
+        self.ctx, self.captured, self.done = ctx, [], threading.Event()
+        self.output = output_name(ctx)
+        self.thread = threading.Thread(target=self._run, daemon=True)
+
+    def _run(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="glide-", dir=self.ctx.tier.runtime_dir) as directory:
+            index = 0
+            while not self.done.is_set():
+                path = Path(directory) / f"{index}.png"
+                tool(self.ctx.tier, ["grim", "-l", "0", "-o", self.output, str(path)],
+                     timeout_s=10.0)
+                self.captured.append(path.read_bytes())
+                index += 1
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *_):
+        self.done.set()
+        self.thread.join(timeout=15)
+
+    def decoded(self) -> list[pixels.Image]:
+        return [pixels.decode_png(data) for data in self.captured]
+
+
+@implementation("labwc.cursor_overlay_glides_between_points")
+def cursor_overlay_glides_between_points(ctx: LegContext) -> None:
+    read = lambda: markers(ctx, (FIRST, SECOND))
+    clean = {f"{x},{y}": False for x, y in (FIRST, SECOND)}
+    ctx.before("pixels.markers", changed(read, clean))
+    session_id = start_session(ctx, cursor=False)
+    try:
+        command(ctx, ["--session", session_id, "cursor-overlay", "enable", "--travel-ms",
+                      "600,700"], headed=False)
+        move(ctx, session_id, FIRST)
+        changed(read, {**clean, f"{FIRST[0]},{FIRST[1]}": True})
+        with Sampler(ctx) as sampler:
+            move(ctx, session_id, SECOND)
+        landed = read()
+        centres = [centre for centre in map(rim_centre, sampler.decoded()) if centre]
+        between = [centre for centre in centres
+                   if FIRST[0] + GLYPH[0] < centre[0] < SECOND[0] - GLYPH[0]]
+        ctx.after("pixels.markers", landed)
+        require(between, f"no frame caught the dart between the points: {centres}")
+        require(landed == {**clean, f"{SECOND[0]},{SECOND[1]}": True},
+                f"the dart did not land on {SECOND}: {landed}")
+        disable_and_reap(ctx, session_id)
+        ctx.restored("pixels.markers", changed(read, clean))
+    finally:
+        end_session(ctx, session_id)
+
+
+@implementation("labwc.cursor_overlay_click_ripple")
+def cursor_overlay_click_ripple(ctx: LegContext) -> None:
+    rippling = lambda: ripple_pixels(screen(ctx), SECOND) > 0
+    ctx.before("pixels.ripple", rippling())
+    session_id = start_session(ctx, cursor=True)
+    try:
+        move(ctx, session_id, SECOND)
+        require(raw.poll(lambda: marker_at(screen(ctx), SECOND), SETTLE_S), "no dart to click")
+        with Sampler(ctx) as sampler:
+            move(ctx, session_id, SECOND, action="mouse-click")
+            raw.poll(lambda: False, 1.2)
+        frames = sampler.decoded()
+        counts = [ripple_pixels(frame, SECOND) for frame in frames]
+        ctx.after("pixels.ripple", max(counts, default=0) > 200)
+        require(max(counts, default=0) > 200, f"no ripple frame at the click point: {counts}")
+        darts = [marker_at(frame, SECOND) for frame in frames]
+        rippled = [index for index, count in enumerate(counts) if count > 200]
+        require(all(darts[index] for index in rippled),
+                f"the dart was not over its ripple: {list(zip(counts, darts))}")
+        require(counts[-1] == 0, f"the ripple did not end: {counts}")
+        disable_and_reap(ctx, session_id)
+        ctx.restored("pixels.ripple", rippling())
+    finally:
+        end_session(ctx, session_id)
+
+
+@implementation("labwc.cursor_overlay_label_card")
+def cursor_overlay_label_card(ctx: LegContext) -> None:
+    read = lambda: card(screen(ctx), FIRST)
+    area = (BUBBLE[0] - 6) * (BUBBLE[1] - 6)
+    present = lambda: read()[0] > area // 2 and read()[1] > 40
+    ctx.before("pixels.card", present())
+    session_id = start_session(ctx, cursor=False)
+    try:
+        command(ctx, ["--session", session_id, "cursor-overlay", "enable", "--label",
+                      "Clicking eight"], headed=False)
+        move(ctx, session_id, FIRST)
+        shown = raw.poll(present, SETTLE_S)
+        ctx.after("pixels.card", bool(shown))
+        require(shown, f"no card with text beside {FIRST}: white, ink = {read()}")
+        disable_and_reap(ctx, session_id)
+        ctx.restored("pixels.card", present())
+    finally:
+        end_session(ctx, session_id)
