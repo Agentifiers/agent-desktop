@@ -218,7 +218,7 @@ REGISTRY += (
     Leg('labwc.cursor_overlay_hidden_from_screenshots', 'A screen screenshot taken while the marker is drawn shows the bare output there, as on X11, and the marker is back on the output afterwards', 'labwc output', LABWC_ONLY, HEADED, ('pixels', 'wlr'), 'pass'),
     Leg('labwc.cursor_overlay_semantic_marks_proven_only', 'A headless semantic click on a digit ref of the placed, unmaximized Calculator moves the marker onto the digit where per-window capture proves the window place and leaves it parked where it does not', 'Calculator', LABWC_ONLY, HEADLESS, ('atspi', 'pixels', 'wlr'), 'pass'),
     Leg('labwc.cursor_overlay_glides_between_points', 'With --travel-ms 600,700, grim frames sampled while a headed mouse-move runs catch the dart between the start and end points, and it lands on the end point', 'labwc output', LABWC_ONLY, HEADED, ('pixels', 'wlr'), 'pass'),
-    Leg('labwc.cursor_overlay_click_ripple', 'grim frames sampled during and after a headed mouse-click show the accent ripple around the click point, then the ripple is gone and the dart stays', 'labwc output', LABWC_ONLY, HEADED, ('pixels', 'wlr'), 'pass'),
+    Leg('labwc.cursor_overlay_click_ripple', 'grim frames sampled during and after a headed mouse-click on a Calculator digit show the accent ripple around the click point with the dart over it, then the ripple is gone, the dart stays and the digit is entered', 'Calculator', LABWC_ONLY, HEADED, ('atspi', 'pixels', 'wlr'), 'pass'),
     Leg('labwc.cursor_overlay_label_card', 'With cursor-overlay enable --label, grim shows an opaque card with dark text ink beside the dart after a headed mouse-move, and nothing after disable', 'labwc output', LABWC_ONLY, HEADED, ('pixels', 'wlr'), 'pass'),
 )
 

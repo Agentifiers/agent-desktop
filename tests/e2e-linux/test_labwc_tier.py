@@ -1,5 +1,6 @@
 """Portable checks for the private labwc tier: its gate, session argv, compositor oracle
-parsing, placement math, browser ownership and the key leg's honest/lying verdicts."""
+parsing, placement math, browser ownership, and the key and click-ripple legs' honest/lying
+verdicts."""
 from __future__ import annotations
 
 import json
@@ -382,4 +383,103 @@ class OverlayOracleTests(unittest.TestCase):
                                   side_effect=lambda pid: (0, 0, "x", table[pid])):
             path.return_value.iterdir.return_value = entries
             self.assertEqual(labwc_overlay.helpers(ctx, "run-1"), [11])
+
+
+class _LabwcDesk:
+    """The 1280x720 output as labwc stacks it: the placed Calculator, the overlay's dart and
+    ripple above it, and above both the root menu that a click on the bare desktop opens with
+    its corner on the click point. `honest` is False for a product that loses the dart once it
+    has clicked."""
+
+    WINDOW = (40, 40, 360, 620)
+    EIGHT = (100, 300, 64, 44)
+
+    def __init__(self, honest: bool):
+        self.honest, self.dart, self.menu, self.display = honest, None, None, "0"
+
+    def move(self, _ctx, _session, point, action="mouse-move"):
+        self.dart = point
+        if action != "mouse-click":
+            return
+        x, y, width, height = self.WINDOW
+        if x <= point[0] < x + width and y <= point[1] < y + height:
+            self.display = "8"
+        else:
+            self.menu = point
+
+    def clear(self, _root):
+        self.display = "0"
+
+    def frame(self, ripple: bool, clicked: bool = False):
+        from oracle import pixels
+        rgb = bytearray(1280 * 720 * 3)
+
+        def paint(x, y, colour):
+            if 0 <= x < 1280 and 0 <= y < 720:
+                rgb[(y * 1280 + x) * 3:(y * 1280 + x) * 3 + 3] = bytes(colour)
+
+        if self.dart is not None:
+            tip_x, tip_y = self.dart
+            if ripple:
+                for row in range(tip_y - 20, tip_y + 20):
+                    for column in range(tip_x - 20, tip_x + 20):
+                        paint(column, row, (66, 153, 255))
+            if self.honest or not clicked:
+                for index in range(40):
+                    paint(tip_x + 2 + index % 20, tip_y + 5 + index // 20, labwc_overlay.FILL)
+                    paint(tip_x + 2 + index % 20, tip_y + 20 + index // 20, labwc_overlay.RIM)
+        if self.menu is not None:
+            for row in range(self.menu[1], self.menu[1] + 120):
+                for column in range(self.menu[0], self.menu[0] + 180):
+                    paint(column, row, (250, 250, 248))
+        return pixels.Image(width=1280, height=720, rgb=bytes(rgb))
+
+
+class RippleLegTests(unittest.TestCase):
+    def _run(self, desk: _LabwcDesk) -> LegContext:
+        leg = legs.leg_by_id("labwc.cursor_overlay_click_ripple")
+        tier = SimpleNamespace(runtime_dir=Path("/private/test"), display=None)
+        ctx = LegContext(tier, "headed", leg, member_reader=lambda _: frozenset())
+
+        class Sampler:
+            def __init__(self, _ctx):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def decoded(self):
+                return [desk.frame(True, True), desk.frame(True, True), desk.frame(False, True)]
+
+        eight = SimpleNamespace(extents=lambda _window: desk.EIGHT)
+        with mock.patch.object(labwc_overlay, "_calculator",
+                               return_value=(None, None, lambda: desk.display)), \
+                mock.patch.object(labwc_overlay, "placement", return_value=desk.WINDOW[:2]), \
+                mock.patch.object(labwc_overlay, "button", return_value=eight), \
+                mock.patch.object(labwc_overlay, "screen", side_effect=lambda _: desk.frame(False)), \
+                mock.patch.object(labwc_overlay, "Sampler", Sampler), \
+                mock.patch.object(labwc_overlay, "move", side_effect=desk.move), \
+                mock.patch.object(labwc_overlay, "start_session", return_value="run-1"), \
+                mock.patch.object(labwc_overlay, "end_session"), \
+                mock.patch.object(labwc_overlay, "disable_and_reap",
+                                  side_effect=lambda *_: setattr(desk, "dart", None)), \
+                mock.patch.object(labwc_overlay, "_clear_calculator", side_effect=desk.clear), \
+                mock.patch.object(labwc_overlay, "stop"), \
+                mock.patch("oracle.atspi_raw.poll", side_effect=lambda read, *a, **kw: read()):
+            labwc_overlay.cursor_overlay_click_ripple(ctx)
+        return ctx
+
+    def test_the_ripple_leg_clicks_a_window_so_no_labwc_menu_covers_the_dart(self):
+        desk = _LabwcDesk(honest=True)
+        ctx = self._run(desk)
+        self.assertIsNone(desk.menu, "the leg clicked the bare desktop and opened the root menu")
+        self.assertEqual(verdict.evaluate(ctx), [])
+        self.assertEqual(ctx.reads["atspi.display"]["after"], ["8"])
+
+    def test_the_ripple_leg_fails_a_product_that_loses_the_dart_after_its_click(self):
+        with self.assertRaisesRegex(AssertionError, "the dart was not over its ripple"):
+            self._run(_LabwcDesk(honest=False))
 

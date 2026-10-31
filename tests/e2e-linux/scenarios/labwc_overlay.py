@@ -14,7 +14,7 @@ from runner.legs import implementation
 from runner.verdict import LegContext
 from scenarios.headed_actions import find_ref
 from scenarios.labwc_input import (CALCULATOR_ID, SNAPSHOT_DEPTH, _calculator, _clear_calculator,
-                                   button, capture_offered, placement)
+                                   activate_by_pointer, button, capture_offered, placement)
 from scenarios.labwc_windows import active_facts, frame_facts
 
 RIM = (17, 19, 24)
@@ -184,6 +184,7 @@ def cursor_overlay_click_passes_through(ctx: LegContext) -> None:
     session_id = None
     try:
         point = wlr.placed_point(placement(CALCULATOR_ID), button(root, "8").extents(True))
+        activate_by_pointer(ctx, app, CALCULATOR_ID, button(root, "C"))
         frames = lambda: frame_facts(ctx, (app,))
         before = read()
         ctx.before("atspi.display", before)
@@ -346,28 +347,43 @@ def cursor_overlay_glides_between_points(ctx: LegContext) -> None:
 
 @implementation("labwc.cursor_overlay_click_ripple")
 def cursor_overlay_click_ripple(ctx: LegContext) -> None:
-    rippling = lambda: ripple_pixels(screen(ctx), SECOND) > 0
-    ctx.before("pixels.ripple", rippling())
-    session_id = start_session(ctx, cursor=True)
+    """The click lands on a Calculator digit rather than the bare desktop: a desktop click opens
+    labwc's root menu at the click point, and labwc draws its menus above every layer-shell
+    surface, so the menu would cover the dart that the product did draw over its ripple."""
+    app, root, read = _calculator(ctx)
+    session_id = None
     try:
-        move(ctx, session_id, SECOND)
-        require(raw.poll(lambda: marker_at(screen(ctx), SECOND), SETTLE_S), "no dart to click")
+        point = wlr.placed_point(placement(CALCULATOR_ID), button(root, "8").extents(True))
+        rippling = lambda: ripple_pixels(screen(ctx), point)
+        before, bare = read(), rippling()
+        ctx.before("atspi.display", before)
+        ctx.before("pixels.ripple", bare)
+        require(bare == 0, f"accent-blue pixels around {point} before any click: {bare}")
+        session_id = start_session(ctx, cursor=True)
+        move(ctx, session_id, point)
+        require(raw.poll(lambda: marker_at(screen(ctx), point), SETTLE_S), "no dart to click")
         with Sampler(ctx) as sampler:
-            move(ctx, session_id, SECOND, action="mouse-click")
+            move(ctx, session_id, point, action="mouse-click")
             raw.poll(lambda: False, 1.2)
+        ctx.after("atspi.display", changed(read, "8"))
         frames = sampler.decoded()
-        counts = [ripple_pixels(frame, SECOND) for frame in frames]
-        ctx.after("pixels.ripple", max(counts, default=0) > 200)
+        counts = [ripple_pixels(frame, point) for frame in frames]
+        ctx.after("pixels.ripple", max(counts, default=0))
         require(max(counts, default=0) > 200, f"no ripple frame at the click point: {counts}")
-        darts = [marker_at(frame, SECOND) for frame in frames]
+        darts = [marker_at(frame, point) for frame in frames]
         rippled = [index for index, count in enumerate(counts) if count > 200]
         require(all(darts[index] for index in rippled),
                 f"the dart was not over its ripple: {list(zip(counts, darts))}")
         require(counts[-1] == 0, f"the ripple did not end: {counts}")
+        require(darts[-1], f"the dart did not stay at the click point: {list(zip(counts, darts))}")
         disable_and_reap(ctx, session_id)
+        _clear_calculator(root)
+        ctx.restored("atspi.display", changed(read, before))
         ctx.restored("pixels.ripple", rippling())
     finally:
-        end_session(ctx, session_id)
+        if session_id is not None:
+            end_session(ctx, session_id)
+        stop(app)
 
 
 @implementation("labwc.cursor_overlay_label_card")
