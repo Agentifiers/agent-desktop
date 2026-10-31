@@ -42,6 +42,13 @@ pub(crate) fn current() -> Result<Route, AdapterError> {
     resolve(session_server())
 }
 
+/// Whether the session takes the wlroots route, where no toolkit's screen
+/// extents are a position and a window is placed only by what the
+/// compositor proves.
+pub(crate) fn is_wlroots() -> bool {
+    current().is_ok_and(|route| route == Route::Wlroots)
+}
+
 /// Whether window control goes through the wlroots foreign-toplevel
 /// protocol: the session takes the wlroots route and its compositor lets a
 /// client list, activate and close toplevels. Every other session keeps its

@@ -25,6 +25,7 @@ pub(crate) struct FakeWorld {
     pub(crate) pointer_reads: RefCell<VecDeque<Result<(), AdapterError>>>,
     pub(crate) pointer_delays: RefCell<VecDeque<Duration>>,
     pub(crate) sink: Option<crate::input::x11::fake_sink::FakeSink>,
+    pub(crate) layout: Option<AdapterError>,
 }
 
 impl FakeWorld {
@@ -34,6 +35,10 @@ impl FakeWorld {
 
     pub(crate) fn wayland() -> Self {
         Self::on(Backend::Wayland)
+    }
+
+    pub(crate) fn wlroots() -> Self {
+        Self::on(Backend::Wlroots)
     }
 
     fn on(backend: Backend) -> Self {
@@ -52,6 +57,7 @@ impl FakeWorld {
             pointer_reads: RefCell::default(),
             pointer_delays: RefCell::default(),
             sink: None,
+            layout: None,
         }
     }
 
@@ -223,6 +229,11 @@ impl PhysicalWorld for FakeWorld {
             ErrorCode::ActionNotSupported,
             format!("pointer_refusal {what}"),
         )
+    }
+
+    fn layout_refusal(&self, _: &AtspiElement, _: Deadline) -> Option<AdapterError> {
+        self.note("layout_refusal");
+        self.layout.clone()
     }
 
     fn pause(&self, _duration: Duration) {

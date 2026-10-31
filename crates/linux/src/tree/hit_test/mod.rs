@@ -23,6 +23,7 @@ pub(crate) mod hit_guard;
 pub(crate) mod hit_occlusion;
 pub(crate) mod hit_verdict;
 mod live_world;
+mod placed_world;
 
 /// What the target's window and the target say about where they are.
 #[derive(Debug, Clone)]
@@ -208,6 +209,31 @@ pub(crate) fn pointer_hit_test(
     }
     let connection = bus.get(deadline)?.inner().clone();
     let mut world = live_world::LiveWorld::new(&connection, deadline);
+    if crate::system::display::route::is_wlroots() {
+        let locate = |facts: &FrameFacts| {
+            let window =
+                crate::tree::surfaces::window_extents::read_window_extents(bus, frame, deadline);
+            crate::tree::live_read::live_layout::prove_place(
+                frame,
+                window,
+                Some(&facts.title),
+                deadline,
+            )
+        };
+        let placing = placed_world::Placing {
+            facts: world,
+            nodes: hit_descent::ShownNodes {
+                nodes: hit_descent::BusNodes {
+                    connection: &connection,
+                    deadline,
+                    screen_origin: None,
+                },
+            },
+            locate,
+        };
+        return placed_world::hit_test_placed(placing, target, frame, pixel, deadline)
+            .map_err(|error| live_world::stopped_aware_for(error, frame));
+    }
     hit_test_via(&mut world, target, frame, pixel, deadline)
         .map_err(|error| live_world::stopped_aware_for(error, frame))
 }

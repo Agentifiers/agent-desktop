@@ -1,6 +1,7 @@
 use super::Placement;
 use super::display_bounds::off_every_display;
-use super::frame_geometry::pointer_bounds;
+use super::frame_geometry::{pointer_bounds, to_pointer_frame};
+use super::layout_place::LayoutPlace;
 use super::offscreen::{OffscreenInput, offscreen};
 use super::placed_states::PlacedStates;
 use crate::tree::properties::toolkit_trust::reports_global_position;
@@ -67,7 +68,9 @@ pub(crate) fn derived_offscreen(read: &ObservedRead, placement: &Placement) -> O
     let minimized =
         if placement.frame_iconified == Some(true) || placement.x11.is_some_and(|x11| x11.hidden) {
             Some(true)
-        } else if placement.popup_origin.is_some() {
+        } else if placement.popup_origin.is_some()
+            || matches!(placement.layout, Some(LayoutPlace::Proven(_)))
+        {
             Some(false)
         } else {
             placement
@@ -116,9 +119,10 @@ pub(crate) fn derived_offscreen(read: &ObservedRead, placement: &Placement) -> O
 }
 
 /// The node's rectangle in screen coordinates: the toolkit's own extents when
-/// it reports global positions, the provable pointer rectangle otherwise.
+/// it reports global positions, the provable pointer rectangle otherwise and
+/// on a wlroots compositor, where no toolkit's extents are global.
 fn screen_rect(read: &ObservedRead, placement: &Placement) -> Option<Extents> {
-    if reports_global_position(&placement.toolkit) {
+    if reports_global_position(&placement.toolkit) && placement.layout.is_none() {
         return match &read.node.extents {
             Field::Present(extents) => Some(*extents),
             Field::Absent | Field::Failed(_) => None,
@@ -132,6 +136,13 @@ pub(crate) fn pointer_extents(read: &ObservedRead, placement: &Placement) -> Opt
         return None;
     };
     let window: Extents = placement.node?;
+    match placement.layout {
+        Some(LayoutPlace::Proven(origin)) if !is_sentinel(window) => {
+            return to_pointer_frame(origin, window);
+        }
+        Some(_) => return None,
+        None => {}
+    }
     let origin = placement.popup_origin.or_else(|| {
         placement.x11.and_then(|x11| {
             Some((

@@ -5,8 +5,10 @@ use super::hit_verdict::Landing;
 use crate::tree::{AtspiElement, Extents};
 
 mod bus_nodes;
+mod shown_nodes;
 
 pub(crate) use bus_nodes::BusNodes;
+pub(crate) use shown_nodes::ShownNodes;
 
 /// How many `GetAccessibleAtPoint` levels one descent follows, and how many
 /// `Parent` steps one climb takes.

@@ -98,6 +98,10 @@ impl PhysicalWorld for ReceiverWorld<'_> {
         self.live.pointer_refusal(what)
     }
 
+    fn layout_refusal(&self, element: &AtspiElement, deadline: Deadline) -> Option<AdapterError> {
+        self.live.layout_refusal(element, deadline)
+    }
+
     fn pause(&self, duration: Duration) {
         self.live.pause(duration);
     }

@@ -52,6 +52,16 @@ impl CapturedImage {
         })
     }
 
+    /// The pixel at `(x, y)`, or `None` outside the image.
+    pub(crate) fn pixel(&self, x: i64, y: i64) -> Option<[u8; 4]> {
+        if x < 0 || y < 0 || x >= i64::from(self.width) || y >= i64::from(self.height) {
+            return None;
+        }
+        let at = (y as usize * self.width as usize + x as usize) * 4;
+        let bytes = self.rgba.get(at..at + 4)?;
+        Some([bytes[0], bytes[1], bytes[2], bytes[3]])
+    }
+
     /// The image without its alpha channel, three bytes per pixel.
     pub(crate) fn to_rgb(&self) -> Vec<u8> {
         self.rgba

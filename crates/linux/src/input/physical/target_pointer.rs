@@ -219,7 +219,9 @@ pub(crate) fn aim_point(
             point.validate()?;
             Ok(point)
         }
-        _ => Err(geometry_refusal()),
+        _ => Err(world
+            .layout_refusal(element, deadline)
+            .unwrap_or_else(geometry_refusal)),
     }
 }
 

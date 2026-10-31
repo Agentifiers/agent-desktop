@@ -12,7 +12,9 @@ use crate::system::x11::window::frame_window::FrameWindow;
 use crate::system::x11::window::window_x11_state::WindowX11State;
 use crate::system::x11::{self, DisplayReader, FrameFacts, MonitorReader, MonitorSource};
 use crate::system::{ACCESSIBLE_INTERFACE, REGISTRY_ROOT_PATH, SharedBus, shell, within};
+use crate::tree::live_read::live_layout::layout_of;
 use crate::tree::placement::Placement;
+use crate::tree::placement::layout_place::LayoutPlace;
 use crate::tree::placement::offscreen::{OffscreenInput, offscreen};
 use crate::tree::properties::liveness::Liveness;
 use crate::tree::properties::node_read::{call, get_one, string_value};
@@ -128,14 +130,16 @@ pub(crate) fn placement(bus: &SharedBus, element: &AtspiElement, deadline: Deadl
 
 fn place(bus: &SharedBus, element: &AtspiElement, deadline: Deadline) -> Placement {
     let toolkit = toolkit_of(bus, element, deadline);
+    let wlroots = crate::system::display::route::is_wlroots();
     let mut placed = Placement {
         node: read_window_extents(bus, element, deadline),
         container: element
             .scroll_container()
             .and_then(|container| read_window_extents(bus, container, deadline)),
-        wayland_unplaced: !reports_global_position(&toolkit)
-            && session_server() == DisplayServer::Wayland,
+        wayland_unplaced: wlroots
+            || (!reports_global_position(&toolkit) && session_server() == DisplayServer::Wayland),
         toolkit,
+        layout: wlroots.then_some(LayoutPlace::Unproven),
         ..Placement::default()
     };
     let (Some(frame), Ok(connection)) = (element.frame(), bus.get(deadline)) else {
@@ -149,6 +153,18 @@ fn place(bus: &SharedBus, element: &AtspiElement, deadline: Deadline) -> Placeme
         return placed;
     };
     placed.frame_iconified = read.iconified;
+    if wlroots {
+        if placed.frame_iconified != Some(true) {
+            placed.layout = Some(layout_of(
+                frame,
+                placed.frame,
+                read.title.as_deref(),
+                deadline,
+            ));
+        }
+        placed.wayland_unplaced = placed.layout == Some(LayoutPlace::Unproven);
+        return placed;
+    }
     if element.is_menu_target()
         && matches!(
             read.role,

@@ -185,6 +185,7 @@ pub(crate) struct ForeignToplevels {
     state: ControlState,
     manager: ZwlrForeignToplevelManagerV1,
     seat: WlSeat,
+    outputs: Vec<Output>,
 }
 
 impl ForeignToplevels {
@@ -198,6 +199,7 @@ impl ForeignToplevels {
             .iter()
             .map(|(handle, output)| (handle.id(), output.name.clone()))
             .collect();
+        let outputs = outputs.into_iter().map(|(_, output)| output).collect();
         let seat: WlSeat = bind(&registry, &globals, SEAT_NEWEST, &link.handle, ())
             .ok_or_else(|| unsupported("wl_seat"))?;
         let manager: ZwlrForeignToplevelManagerV1 =
@@ -210,7 +212,13 @@ impl ForeignToplevels {
             state,
             manager,
             seat,
+            outputs,
         })
+    }
+
+    /// The outputs as the connection read them when it opened.
+    pub(crate) fn outputs(&self) -> &[Output] {
+        &self.outputs
     }
 
     fn entry(&self, key: u32) -> Option<&Entry> {

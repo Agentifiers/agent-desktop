@@ -62,6 +62,12 @@ pub(crate) trait PhysicalWorld {
         deadline: Deadline,
     ) -> Result<Delivery, AdapterError>;
     fn pointer_refusal(&self, what: &'static str) -> AdapterError;
+    /// On a wlroots compositor, the refusal for a target whose window no
+    /// proof places, so the caller learns why no point exists. Other routes
+    /// answer none.
+    fn layout_refusal(&self, _element: &AtspiElement, _deadline: Deadline) -> Option<AdapterError> {
+        None
+    }
     fn pause(&self, duration: Duration);
 }
 
@@ -189,6 +195,16 @@ impl PhysicalWorld for LiveWorld<'_> {
 
     fn pointer_refusal(&self, what: &'static str) -> AdapterError {
         crate::input::wayland::keysym_send::pointer_refusal(what)
+    }
+
+    fn layout_refusal(&self, element: &AtspiElement, deadline: Deadline) -> Option<AdapterError> {
+        if self.backend().ok()? != Backend::Wlroots {
+            return None;
+        }
+        let handle = element.clone().into_native_handle();
+        crate::tree::live_read::pointer_refusal::pointer_position_refusal(
+            self.bus, &handle, deadline,
+        )
     }
 
     fn pause(&self, duration: Duration) {

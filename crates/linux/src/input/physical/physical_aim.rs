@@ -3,6 +3,7 @@ use serde_json::json;
 
 use crate::tree::hit_test::hit_guard::{admits, pixel};
 use crate::tree::placement::Placement;
+use crate::tree::placement::layout_place::LayoutPlace;
 use crate::tree::properties::toolkit_trust::reports_global_position;
 
 pub(crate) fn validate(
@@ -16,7 +17,12 @@ pub(crate) fn validate(
         if placed.frame_iconified == Some(true) || placed.x11.is_some_and(|window| window.hidden) {
             return None;
         }
-        let origin = placed.popup_origin.or_else(|| {
+        let layout = match placed.layout {
+            Some(LayoutPlace::Proven(origin)) => Some(origin),
+            Some(LayoutPlace::Unproven) => return None,
+            None => None,
+        };
+        let origin = placed.popup_origin.or(layout).or_else(|| {
             let window = placed.x11?;
             let shadow = if reports_global_position(&placed.toolkit) {
                 (0, 0, 0, 0)
@@ -50,3 +56,7 @@ pub(crate) fn validate(
         .with_disposition(DeliverySemantics::not_delivered())
     })
 }
+
+#[cfg(test)]
+#[path = "physical_aim_tests.rs"]
+mod tests;

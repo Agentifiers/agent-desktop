@@ -127,8 +127,10 @@ impl NodeReader for BusReader<'_> {
         placement(self.bus, element, deadline)
     }
 
+    /// A wlroots compositor gives no toolkit a global position, so every
+    /// toolkit there is placed through the compositor's proof.
     fn global_position(&mut self, element: &AtspiElement, deadline: Deadline) -> bool {
-        global_position(self.bus, element, deadline)
+        !crate::system::display::route::is_wlroots() && global_position(self.bus, element, deadline)
     }
 
     fn menu_context(
@@ -277,6 +279,12 @@ pub(crate) fn pointer_via<R: NodeReader>(
     if bounds.is_none() && placed.tie.is_some() {
         return Err(window_tied());
     }
+    if bounds.is_none()
+        && placed.layout == Some(super::placement::layout_place::LayoutPlace::Unproven)
+        && placed.frame_iconified != Some(true)
+    {
+        return Err(live_layout::origin_unproven(element.frame()));
+    }
     let states = placed_states(&node.read, &node.evidence, &placed)?.states;
     Ok(agent_desktop_core::PointerObservation { bounds, states })
 }
@@ -365,6 +373,7 @@ pub(crate) fn get_element_bounds(
     )
 }
 
+pub(crate) mod live_layout;
 pub(crate) mod live_offscreen;
 pub(crate) mod live_project;
 pub(crate) mod pointer_refusal;
@@ -383,3 +392,7 @@ mod popup_bounds_tests;
 #[cfg(test)]
 #[path = "live_modal_tests.rs"]
 mod modal_tests;
+
+#[cfg(test)]
+#[path = "live_wlroots_tests.rs"]
+mod wlroots_tests;

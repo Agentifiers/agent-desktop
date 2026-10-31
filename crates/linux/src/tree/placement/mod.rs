@@ -1,6 +1,7 @@
 pub(crate) mod display_bounds;
 pub(super) mod extents;
 pub(crate) mod frame_geometry;
+pub(crate) mod layout_place;
 pub(super) mod node_position;
 pub(crate) mod offscreen;
 pub(super) mod placed_states;
@@ -10,6 +11,7 @@ use super::Extents;
 use super::surfaces::window_tie::WindowTie;
 use crate::system::process::toolkit_id::ToolkitId;
 use crate::system::x11::window::window_x11_state::WindowX11State;
+use layout_place::LayoutPlace;
 
 /// Where a node sits relative to its window, as far as it could be read.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -27,6 +29,8 @@ pub(crate) struct Placement {
     pub(crate) wayland_unplaced: bool,
     /// The frame maps to several display windows that nothing tells apart.
     pub(crate) tie: Option<WindowTie>,
+    /// Where a wlroots compositor draws the frame; `None` off that route.
+    pub(crate) layout: Option<LayoutPlace>,
 }
 
 pub(crate) mod popup_frame;

@@ -285,3 +285,48 @@ fn a_clipped_sidebar_row_never_receives_a_click_outside_its_viewport() {
         }
     }
 }
+
+#[test]
+fn a_wlroots_target_without_a_proved_place_is_refused_by_name_without_a_fallback_check() {
+    let mut world = FakeWorld::wlroots().with_bounds(None);
+    world.layout = Some(crate::tree::live_read::live_layout::origin_unproven(Some(
+        &element(),
+    )));
+    let error = click_steps(
+        &world,
+        &element(),
+        ClickSpec::left(2, None),
+        InteractionPolicy::headed(),
+        deadline(),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, ErrorCode::ActionFailed);
+    assert_eq!(check_of(&error), None);
+    assert_eq!(
+        error.details.as_ref().expect("details")["kind"],
+        "wlroots_window_origin_unproven"
+    );
+    assert!(not_delivered(&error));
+    assert!(world.sent_nothing());
+}
+
+#[test]
+fn placed_bounds_never_ask_for_the_layout_refusal() {
+    let world = FakeWorld::wlroots();
+    let sink = crate::input::x11::fake_sink::FakeSink::new();
+    let mut world = world;
+    world.sink = Some(sink.clone());
+    click_steps(
+        &world,
+        &element(),
+        ClickSpec::left(1, None),
+        InteractionPolicy::headed(),
+        deadline(),
+    )
+    .unwrap();
+    assert_eq!(world.count("layout_refusal"), 0);
+    assert!(
+        sink.recorded()
+            .contains(&crate::input::x11::fake_sink::Recorded::Move(120, 210))
+    );
+}
