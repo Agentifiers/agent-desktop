@@ -73,9 +73,9 @@ not trigger SmartScreen.
 **Linux** supports Ubuntu 24.04+ with GNOME 46 as the primary target and a glibc 2.35 floor; Ubuntu 22.04's ATK bridge
 aborts on `Action.GetActions`. Run inside the user's graphical session with `at-spi2-core` installed. A TTY or SSH
 shell without that session's bus, display and runtime environment cannot see its apps. `agent-desktop status`
-activates and checks the accessibility bus. X11 keys need XTEST,
-Wayland keys need GNOME Mutter RemoteDesktop, and the Wayland clipboard needs `wl-clipboard`. The Linux skill covers
-the rest: `agent-desktop skills get linux`.
+activates and checks the accessibility bus. X11 keys need XTEST. On Wayland, GNOME keys need Mutter RemoteDesktop, and a
+wlroots compositor such as labwc needs `zwp_virtual_keyboard_manager_v1` and `zwlr_virtual_pointer_manager_v1`; the
+Wayland clipboard needs `wl-clipboard`. The Linux skill covers the rest: `agent-desktop skills get linux`.
 
 ## Platform notes
 
@@ -86,5 +86,8 @@ the rest: `agent-desktop skills get linux`.
 `launch` on Windows takes an absolute path, or a bare name under System32 or the Windows directory, with or
 without `.exe`. It cannot resolve a display name such as "Google Chrome".
 
-**Linux.** Semantic actions work on X11 and Wayland. On Wayland, app pointer input refuses and native window control
-is unsupported.
+**Linux.** Semantic actions work on X11 and Wayland. On GNOME Wayland, app pointer input refuses and native window
+control is unsupported. On a wlroots compositor (labwc, sway), chosen from the compositor's protocols rather than its
+name, keys, coordinate pointer input, screencopy screenshots and `focus-window`, `close-app`, `minimize`, `maximize`
+and `restore` work; `move-window` and `resize-window` refuse, and window screenshots need the compositor's per-window
+capture protocol.

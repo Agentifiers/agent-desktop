@@ -5,7 +5,8 @@ requirements:
   - agent-desktop
 description: >
   Linux platform guide for the agent-desktop CLI. Lists per command group
-  what works on X11 and on Wayland, how to check the AT-SPI accessibility bus,
+  what works on X11, on GNOME Wayland and on wlroots compositors such as
+  labwc, how to check the AT-SPI accessibility bus,
   the first-contact gotchas (app names, Chromium and Electron flags, headed
   focus, blocked key combos), and where to find lifecycle, screenshot,
   clipboard, tray, notification and troubleshooting details.
@@ -27,30 +28,49 @@ loader floor is glibc 2.35. Run the CLI inside the target apps' desktop session:
 the session bus, display and runtime directory come from its environment. A TTY
 login, an SSH shell without session variables, a container without a bus or
 another user's session sees no apps. GNOME is the measured desktop; X11 and
-Wayland sessions both work and differ in input, capture and window control.
-Observation and semantic actions need no helper tool.
+Wayland sessions both work and differ in input, capture and window control. On
+Wayland, a compositor that offers `wl_seat`, `zwp_virtual_keyboard_manager_v1`
+and `zwlr_virtual_pointer_manager_v1` (labwc, sway) takes the wlroots route,
+chosen from its registry globals, never its name; any other compositor takes
+the GNOME route. Observation and semantic actions need no helper tool.
 
 ## Capability Table
+
+"wlroots" means a Wayland compositor on the wlroots route; "GNOME Wayland" means
+every other Wayland compositor.
 
 | Group | Commands | Status on Linux |
 |-------|----------|-----------------|
 | Observation | `snapshot`, `find`, `get`, `is` | Works on X11 and Wayland through AT-SPI. Supports `window`, `sheet`, `alert` and `menu`; GNOME adds shell surfaces. Virtual tray getters have limits; see the shell reference and check `status` |
 | Surfaces | `list-surfaces` | Lists an app's windows, sheets and open menus; shell reads use `snapshot --surface` |
-| Ref interaction | `click`, `right-click`, `type`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll-to` | Need a readable live identity and the required AT-SPI capability. See the shell reference for menu-ref resolution limits; X11 headed fallback also needs usable geometry and does not bypass identity checks |
-| Wheel scrolling | `scroll`, `mouse-wheel` | Physical wheel input; X11 and `--headed` only |
-| Pointer gestures | `double-click`, `triple-click`, `hover`, `drag` | `--headed`, X11 only. On Wayland the pointer cannot be aimed and these refuse with `ACTION_NOT_SUPPORTED` |
+| Ref interaction | `click`, `right-click`, `type`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll-to` | Need a readable live identity and the required AT-SPI capability. See the shell reference for menu-ref resolution limits; X11 headed fallback also needs usable geometry and does not bypass identity checks. wlroots headed ref clicks need a provable window origin; see `references/display-servers-and-input.md` |
+| Wheel scrolling | `scroll`, `mouse-wheel` | Physical wheel input; X11 and wlroots, `--headed` only |
+| Pointer gestures | `double-click`, `triple-click`, `hover`, `drag` | `--headed`, X11 and wlroots. On GNOME Wayland the pointer cannot be aimed and these refuse with `ACTION_NOT_SUPPORTED`. wlroots aims at coordinates; aiming at a ref has limits |
 | Focus | `focus` | Needs `--headed` for the focus permission. Calls AT-SPI `Component.GrabFocus` on a focusable node that is not yet `focused`, not the pointer, and verifies the state; a GTK4 app rejects the call, so `focus` ends `ACTION_FAILED` `grab_focus_rejected` there and `focus-window` is the way to focus its window |
-| Keyboard and mouse | `press`, `mouse-click`, `mouse-move`, `mouse-wheel` | `press` and text keys work on X11 and capability-detected Mutter Wayland sessions; pointer commands are X11 and `--headed`. See `references/display-servers-and-input.md` |
+| Keyboard and mouse | `press`, `mouse-click`, `mouse-move`, `mouse-wheel` | `press` and text keys work on X11, capability-detected Mutter Wayland sessions and wlroots (any Unicode character); pointer commands are X11 and wlroots, `--headed`. See `references/display-servers-and-input.md` |
 | Held input | `key-down`, `key-up`, `mouse-down`, `mouse-up` | Fail closed on every platform: on Linux, `key-down` and `key-up` with `ACTION_NOT_SUPPORTED`; `mouse-down` and `mouse-up` with `POLICY_DENIED` headless and `ACTION_NOT_SUPPORTED` with `--headed` |
-| App and window | `launch`, `close-app`, `list-windows`, `list-apps`, `focus-window`, `move-window`, `resize-window`, `minimize`, `maximize`, `restore` | Launch and listing work on X11 and Wayland; `focus-window` requires X11. Other window control and graceful close need an X11 client. See `references/windows-and-lifecycle.md` |
-| Displays | `list-displays` | Works |
-| Capture | `screenshot` | X11: a window without permission; a display only under a non-compositing manager. Wayland: portal consent, with display cropping. No selector returns the primary display. See `references/capture-and-clipboard.md` |
+| App and window | `launch`, `close-app`, `list-windows`, `list-apps`, `focus-window`, `move-window`, `resize-window`, `minimize`, `maximize`, `restore` | Launch and listing work everywhere. X11: all window control through EWMH. GNOME Wayland: `focus-window` refused; other window control and graceful close need an X11 client. wlroots: `focus-window`, graceful close, `minimize`, `maximize` and `restore` through `zwlr_foreign_toplevel_manager_v1`; `move-window` and `resize-window` refuse with `wlroots_no_geometry_control`. See `references/windows-and-lifecycle.md` |
+| Displays | `list-displays` | Works; wlroots reads `wl_output` and `xdg_output` |
+| Capture | `screenshot` | X11: a window without permission; a display only under a non-compositing manager. GNOME Wayland: portal consent, with display cropping. wlroots: screencopy with no consent; a window needs `ext_foreign_toplevel_image_capture_source_manager_v1` (labwc 0.20, not 0.9.8). No selector returns the primary display. See `references/capture-and-clipboard.md` |
 | Clipboard | `clipboard-get`, `clipboard-set`, `clipboard-clear` | Works; text, images and file lists. Wayland needs `wl-clipboard` |
 | Wait | `wait` | Works for ms, `--element`, `--window`, `--text`, `--menu`, `--menu-closed`, `--event`. Menu waits share the menu-surface detector; `--notification` waits for a new notification on GNOME |
 | Notifications | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` | GNOME Shell only; list headless, mutations `--headed` on X11, and `dismiss-notification` and `notification-action` also need `--expected-app` or `--expected-title`. Fields are read from the shell's widget layout, verified on GNOME Shell 46.0 only, and each mutation is proven by its effect. Wayland refuses the shell pointer before input. A notification owner that is not the shell or its own helper returns `PLATFORM_NOT_SUPPORTED`. See the shell reference |
 | Shell surfaces | `open-system-surface` | Only `system-tray` and `action-center` can work. `system-tray` needs a StatusNotifierWatcher (else it refuses with `watcher: absent`); `action-center` needs proven role ancestry. `quick-settings` refuses with `shell_container_unproven`, `taskbar` always refuses, and `start-menu` and `system-tray-overflow` are not supported, though `--help` lists them. See the shell reference |
 | Cursor overlay | `cursor-overlay` | Requires an active session; see Cursor overlay below. X11 enable returns `data.rendered: true`; Wayland saves the setting with `data.rendered: false` |
-| System | `status`, `permissions`, `version`, `batch`, `skills`, `session`, `trace` | Works |
+| System | `status`, `permissions`, `version`, `batch`, `skills`, `session`, `trace` | Works. `permissions` reports `screen_recording: not_required` on X11 and on wlroots with screencopy |
+
+On labwc the two tested versions differ only where a protocol is missing:
+labwc 0.9.8 lacks `ext_foreign_toplevel_image_capture_source_manager_v1`.
+
+| Command | labwc 0.20.2 | labwc 0.9.8 |
+|---|---|---|
+| `list-displays`, `list-windows`, display `screenshot` | Works | Works |
+| `press`, `type`, headed `type @ref` | Works | Works |
+| `mouse-click`, `mouse-move`, `mouse-wheel`, `drag` at coordinates | Works on native windows; an Xwayland window takes only the first click | Works on native windows; an Xwayland window takes only the first click |
+| `focus-window`, graceful `close-app`, `minimize`, `maximize`, `restore` | Works | Works |
+| `move-window`, `resize-window` | Refused, `wlroots_no_geometry_control` | Refused, `wlroots_no_geometry_control` |
+| `screenshot --app`/`--window-id` | Works | Refused, `PLATFORM_NOT_SUPPORTED` |
+| Headed ref pointer actions | Active maximized or fullscreen window, or any window whose pixels are found | Active maximized or fullscreen window only; otherwise refused, `wlroots_window_origin_unproven` |
 
 ## First Contact
 
@@ -167,11 +187,12 @@ cursor; on Wayland none is drawn.
 - Ref actions are semantic AT-SPI calls that never move the pointer or change
   the active window. Under `--headed`, ref `click`, `right-click` and `type` try
   physical input first and fall back to the semantic action only after a
-  `not_delivered` refusal (Windows works the other way round). On Wayland, headed
-  pointer commands and a headed `select` refuse at once with
+  `not_delivered` refusal (Windows works the other way round). On GNOME Wayland,
+  headed pointer commands and a headed `select` refuse at once with
   `ACTION_NOT_SUPPORTED`, cause `wayland_session`; a headed `type` needs the
-  Mutter RemoteDesktop capability. `references/display-servers-and-input.md`
-  has the full rules.
+  Mutter RemoteDesktop capability. On wlroots, headed keys go through a virtual
+  keyboard and pointer commands through a virtual pointer.
+  `references/display-servers-and-input.md` has the full rules.
 - `select` tries the semantic route first and the pointer second; the pointer
   route needs an explicit `--headed` request on X11. A Qt combo's semantic
   selection only highlights its popup row, so headless selection refuses with
@@ -201,10 +222,12 @@ cursor; on Wayland none is drawn.
 - In key combos `cmd` and `meta` are the Super key. Key names are the macOS and
   Windows names plus X keysym names. `press` takes mapped keys only; `type`
   handles characters the layout cannot produce.
-- Window ops act on X11 clients; `focus-window` and headed scoped `press` require
-  an X11 session. Headless scoped `press` requires live target focus on either
-  display server. Focusing a window on another workspace can switch the user's
-  current desktop.
+- On X11 and wlroots, window ops act on the window; on GNOME Wayland only on
+  Xwayland clients, and `focus-window` and headed scoped `press` refuse there.
+  wlroots matches a window to its compositor toplevel by title, then app id, so
+  two windows of one app with one title are `AMBIGUOUS_TARGET`. Headless scoped
+  `press` requires live target focus on every display server. Focusing a window
+  on another workspace can switch the user's current desktop.
 - Linux exact FFI refs carrying bounds or a bounds hash require window-relative
   geometry, even when the ref also carries a name or identifier. Geometry-free
   identity refs are supported.
@@ -213,12 +236,13 @@ cursor; on Wayland none is drawn.
 
 - `references/bus-and-permissions.md`: bus bootstrap, the three bus states,
   `status` and `permissions` output, state-root rules.
-- `references/display-servers-and-input.md`: X11 versus Wayland table,
-  `press`, `type`, pointer, wheel, drag, blocked combos, key names.
+- `references/display-servers-and-input.md`: route choice, X11, GNOME Wayland
+  and wlroots table, `press`, `type`, pointer, wheel, drag, blocked combos, key
+  names.
 - `references/windows-and-lifecycle.md`: `launch`, `close-app`, window ops,
   focus, workspaces, stopped apps, background `press`.
-- `references/capture-and-clipboard.md`: `screenshot` on X11 and Wayland,
-  the Wayland consent dialog, clipboard owner and helper.
+- `references/capture-and-clipboard.md`: `screenshot` on X11, GNOME Wayland and
+  wlroots, the Wayland consent dialog, clipboard owner and helper.
 - `references/shell-tray-and-notifications.md`: menus and GTK4 popovers, GNOME
   Overview/top bar, shell reads and input, notification identity guards, SNI
   and AppIndicator requirements and refusals, sandbox guidance.

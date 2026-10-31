@@ -128,11 +128,11 @@ It ships 60 command names, 56 operational commands. The other four (`key-down`, 
 | | macOS | Windows | Linux |
 |---|:---:|:---:|:---:|
 | Accessibility tree | Yes | Yes | Yes (AT-SPI) |
-| Click / type / keyboard | Yes | Yes | AT-SPI; X11 / GNOME keys |
-| Mouse input | Yes | Yes | X11, `--headed` |
-| Screenshot | Yes | Yes | X11 windows; Wayland portal |
+| Click / type / keyboard | Yes | Yes | AT-SPI; X11 / GNOME / wlroots keys |
+| Mouse input | Yes | Yes | X11 and wlroots, `--headed` |
+| Screenshot | Yes | Yes | X11 windows; Wayland portal; wlroots screencopy |
 | Clipboard | Yes | Yes | Yes; Wayland needs `wl-clipboard` |
-| App & window management | Yes | Yes | Launch/list; X11 window control |
+| App & window management | Yes | Yes | Launch/list; X11 window control; wlroots focus, close, minimize, maximize, restore |
 | Notifications | Yes | Yes | GNOME Shell |
 | Shell surfaces (`open-system-surface`) | Planned | Yes | GNOME tray, Action Center |
 

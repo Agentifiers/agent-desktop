@@ -1,8 +1,11 @@
 # Capture and Clipboard on Linux
 
-X11 needs no permission and no outside tool. Wayland asks a person once for
-`screenshot` and needs `wl-clipboard`. `agent-desktop permissions` shows the
-case: `screen_recording` is `not_required` on X11 and `unknown` on Wayland.
+X11 needs no permission and no outside tool. GNOME Wayland asks a person once
+for `screenshot`; a wlroots compositor with screencopy (labwc) asks nobody.
+Every Wayland session needs `wl-clipboard`. `agent-desktop permissions` shows
+the case: `screen_recording` is `not_required` on X11 and on a wlroots
+compositor that offers `zwlr_screencopy_manager_v1`, and `unknown` on GNOME
+Wayland or a wlroots compositor without it.
 `screenshot` has no timeout flag.
 
 ## `screenshot` on X11
@@ -44,9 +47,13 @@ agent-desktop screenshot /tmp/everything.png
 - Resource, connection and visibility failures keep their own errors. Only a
   window whose paint cannot be proven gets the `covered` advice.
 
-## `screenshot` on Wayland
+## `screenshot` on GNOME Wayland
 
-Wayland has no window position and no per-window capture. The portal's
+This section covers Mutter and any Wayland compositor without wlroots
+screencopy. A wlroots compositor such as labwc copies its outputs directly; see
+the next section.
+
+GNOME Wayland has no window position and no per-window capture. The portal's
 `Screenshot` captures the desktop; the CLI returns the primary display by
 default, cropping the image on a multi-monitor desktop. `--screen N` selects
 another monitor.
@@ -75,11 +82,53 @@ agent-desktop screenshot /tmp/desktop.png
   `display_mapping`.
 - A known display layout is rechecked after consent, including when it had only
   one monitor. A changed layout returns `ACTION_FAILED` without pixels.
-- A window target (`--app`, `--window-id`) is `PLATFORM_NOT_SUPPORTED` on
+- A window target (`--app`, `--window-id`) is `PLATFORM_NOT_SUPPORTED` on GNOME
   Wayland, permanently. Capture a display, or read the window with `snapshot`.
 - The portal writes the PNG under the user's home. The CLI accepts the file only
   inside the temp, runtime or home directory, checks it is a regular file of the
   user made for this request, reads it and removes it.
+
+## `screenshot` on a wlroots compositor
+
+On the wlroots route (see `references/display-servers-and-input.md`) the CLI
+copies outputs with `zwlr_screencopy_manager_v1`. There is no portal, no consent
+dialog and no outside tool, and the pointer is not painted.
+
+```bash
+agent-desktop screenshot /tmp/desktop.png
+agent-desktop screenshot --screen 1 /tmp/second.png
+agent-desktop screenshot --app gnome-calculator /tmp/calc.png
+```
+
+- With no selector the CLI copies the primary display; `--screen N` follows
+  `list-displays` order. Width and height are the output's pixel size and
+  `scale_factor` is the display's scale; the JSON is the same as on other
+  platforms.
+- `--screen` out of range is `INVALID_ARGS` with `display_count` and
+  `display_ids`. A display that changes during the copy is `INVALID_ARGS` ("The
+  display changed while it was being captured") with `details.display_count`,
+  `not_delivered`.
+- A compositor without screencopy uses the portal, exactly as GNOME does.
+- A window target (`--app`, `--window-id`) needs
+  `ext_foreign_toplevel_image_capture_source_manager_v1` with the ext image copy
+  capture protocol. labwc 0.20 offers it; labwc 0.9.8 does not, and there a
+  window target stays `PLATFORM_NOT_SUPPORTED` ("A single window cannot be
+  captured on a Wayland session"). Capture the display instead.
+- The CLI resolves the window through AT-SPI first, then picks the compositor
+  window whose title equals the window's title. The app id (executable name,
+  desktop ids and aliases) only separates windows that share a title. Neither
+  wlroots window protocol names a process, so two windows with one title and
+  one app id answer `AMBIGUOUS_TARGET` ("N compositor windows titled '<t>' could
+  be this window") with `title` and `candidate_count`. No window with that title
+  is `WINDOW_NOT_FOUND`. A window retitled or moved during the copy is
+  `ACTION_FAILED` ("The window changed while it was being captured"). All three
+  are `not_delivered`.
+- The compositor's copy is the whole client surface, including client-side
+  shadow margins. The CLI crops it to the box of opaque, non-black pixels only
+  when that box has the size the window's AT-SPI frame reports; otherwise it
+  returns the whole surface, margins included.
+- With several outputs at different scales a window image reports
+  `scale_factor` 1.0, because the compositor gives no window position.
 
 ## Clipboard
 

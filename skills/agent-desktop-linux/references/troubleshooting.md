@@ -19,8 +19,12 @@ Start with `agent-desktop status` and `agent-desktop list-apps`.
 | `POLICY_DENIED` on `click` or `type` | A required policy or capability is absent. Read the failed check. Headed policy gives physical input only where the receiver can be proven |
 | Tray item lists no `Activate` or `ContextMenu` | No primary protocol action. Use an advertised virtual menu entry. Headed input does not prove a native receiver from the item's title |
 | `POLICY_DENIED` on `press` | Blocked combo. Do not use `--force` unless you mean it |
-| `ACTION_NOT_SUPPORTED` `wayland_session` | Wayland focus, headed scoped `press` or control of native Wayland windows is unavailable. Bring the target forward yourself; use global `press` or the app's own UI |
-| `ACTION_NOT_SUPPORTED` with `physical_delivery_started: false` | Ordinary app pointer input on Wayland. Use a semantic action, `set-value` or a global `press` |
+| `ACTION_NOT_SUPPORTED` `wayland_session` | GNOME Wayland focus, headed scoped `press` or control of native Wayland windows is unavailable. Bring the target forward yourself; use global `press` or the app's own UI |
+| `ACTION_NOT_SUPPORTED` with `physical_delivery_started: false` | Ordinary app pointer input on GNOME Wayland. Use a semantic action, `set-value` or a global `press` |
+| `ACTION_NOT_SUPPORTED` `wlroots_no_geometry_control` | `move-window` or `resize-window` on a wlroots compositor, which lets no client place another client's window. Use `maximize` or `restore` |
+| `ACTION_NOT_SUPPORTED` `control_character` | wlroots headed `type` text holds a control character other than newline or tab. Remove it or use `set-value` |
+| `AMBIGUOUS_TARGET` `ambiguous_window` on wlroots | Two compositor windows share the title and app id. Give them distinct titles or close one |
+| `ACTION_FAILED` `wlroots_window_origin_unproven` | A headed ref pointer action on wlroots whose window has no proven place: not active and maximized or fullscreen, and its pixels were not found (or the compositor cannot capture one window, as labwc 0.9.8). Nothing was sent. Run `maximize --window-id <id>` and `focus-window --window-id <id>`, act without `--headed`, or use `mouse-click --xy` |
 | `PLATFORM_NOT_SUPPORTED`, `daemon: absent` or `unsupported` | Notification protocol missing, or its owner is not the detected shell backend. Run inside the supported desktop session; see the shell reference |
 | `PLATFORM_NOT_SUPPORTED`, `watcher: absent` | No SNI watcher exists. Start the session's tray backend providing `org.kde.StatusNotifierWatcher`; extension advice requires a detected backend |
 | `ACTION_NOT_SUPPORTED`, `shell_container_unproven` | Roles and parent chains do not establish the shell container or opener. Use an app surface or the logical SNI tray. English labels, wrapper depth and screen position cannot establish popup identity |
@@ -186,9 +190,13 @@ D-Bus or X11 error.
   `data.rendered: false` and no overlay is drawn, so do not wait for one.
 - `open-system-surface --surface taskbar`: `PLATFORM_NOT_SUPPORTED`. Use the
   advertised GNOME surfaces; see `references/shell-tray-and-notifications.md`.
-- Ordinary app pointer commands and window screenshots on Wayland. Shell ref
-  clicks also refuse on Wayland, and on X11 unless the shell's own tree proves the
-  receiver.
+- Ordinary app pointer commands and window screenshots on GNOME Wayland, and
+  window screenshots on a wlroots compositor without
+  `ext_foreign_toplevel_image_capture_source_manager_v1` (labwc 0.9.8). Shell
+  ref clicks also refuse on Wayland, and on X11 unless the shell's own tree
+  proves the receiver.
+- `move-window` and `resize-window` on a wlroots compositor:
+  `ACTION_NOT_SUPPORTED`, cause `wlroots_no_geometry_control`.
 
 ## Missing tools
 

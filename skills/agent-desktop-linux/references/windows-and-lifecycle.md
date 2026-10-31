@@ -1,8 +1,10 @@
 # Windows and Lifecycle on Linux
 
 Window control uses EWMH client messages on the X11 display: an X11 session's
-display, or the Xwayland display of a Wayland session. `wmctrl` and `xdotool`
-are not used.
+display, or the Xwayland display of a GNOME Wayland session. `wmctrl` and
+`xdotool` are not used. A wlroots compositor (labwc) controls every window,
+Xwayland included, through `zwlr_foreign_toplevel_manager_v1` instead; see
+"wlroots compositors" below.
 
 ## Naming an app
 
@@ -169,8 +171,9 @@ snapshot `--surface sheet`, answer it, then run `list-windows`.
   `not_delivered`: answer it without `--headed`.
 - `--force` sends `SIGTERM` through a pidfd, then `SIGKILL` after 2 s; a stopped
   process gets `SIGKILL` at once.
-- A process of a Wayland session with no X11 window is `ACTION_NOT_SUPPORTED`,
-  cause `wayland_session`.
+- A process of a GNOME Wayland session with no X11 window is
+  `ACTION_NOT_SUPPORTED`, cause `wayland_session`. On a wlroots compositor the
+  graceful close goes through the compositor instead; see "wlroots compositors".
 - Protection follows the target process instance, never its name. `INVALID_ARGS`,
   `not_delivered`, for:
   - the owner of the active display socket, or of the X root's supporting-WM
@@ -214,8 +217,9 @@ Reports carry `action`, `target`, `steps` and `disposition`, without a `moved`,
 - Without `--app` or `--window-id` all five act on the focused window, and
   `data.target` names the window id, title and process identity, even when no
   selector was supplied. Pass one unless you mean the focused window.
-- A Wayland-native window, and an un-minimize on a Wayland session, are refused
-  with cause `wayland_session` before anything is sent.
+- On GNOME Wayland a Wayland-native window, and an un-minimize, are refused with
+  cause `wayland_session` before anything is sent. A wlroots compositor handles
+  native windows; see "wlroots compositors".
 - A window the process cannot be mapped to is refused before any write: no client
   is `ACTION_NOT_SUPPORTED`, cause `window_not_mapped`; two clients are
   `AMBIGUOUS_TARGET`, cause `ambiguous_window`.
@@ -256,7 +260,8 @@ safe to repeat.
   every window. Send a global `--headed press escape` (no `--app`), then call
   `focus-window --app <name>` again. A headed ref action runs `focus-window` for
   you and ends the same way.
-- A Wayland session is `ACTION_NOT_SUPPORTED`, cause `wayland_session`.
+- A GNOME Wayland session is `ACTION_NOT_SUPPORTED`, cause `wayland_session`.
+  A wlroots compositor activates the window itself; see "wlroots compositors".
 - A headless ref `click` on a minimized window refuses with live `offscreen`
   evidence and leaves it minimized. On X11, `--headed click`, `--headed hover`
   and `--headed drag` first focus the ref's exact source window, restoring it if
@@ -264,9 +269,72 @@ safe to repeat.
   show and activate that window, or if the target stays hidden, offscreen or
   occluded after focus. An unsupported
   physical route or geometry refusal can fall back to semantic click only when it
-  proves nothing was sent. Ordinary-app headed pointer actions on Wayland refuse
-  with cause `wayland_session` before delivery. Use `restore` to restore a window
+  proves nothing was sent. Ordinary-app headed pointer actions on GNOME Wayland
+  refuse with cause `wayland_session` before delivery. Use `restore` to restore a window
   without clicking it.
+
+## wlroots compositors
+
+On the wlroots route, when the compositor offers
+`zwlr_foreign_toplevel_manager_v1` and `wl_seat`, window control acts on the
+compositor's toplevels. Native Wayland and Xwayland windows go the same way; the
+EWMH path is not used, because labwc ignores Xwayland move requests.
+
+**Matching.** The CLI resolves the window through AT-SPI, then picks the
+toplevel whose title equals the window's title. The app id (executable name,
+desktop ids and aliases) only separates windows that share a title. The
+protocol names no process, so two toplevels with one title and one app id
+cannot be told apart: window operations answer `AMBIGUOUS_TARGET`, cause
+`ambiguous_window`, `not_delivered`. Give the windows distinct titles or close
+one. A window with no matching toplevel is `window_not_mapped`.
+
+**`focus-window`** asks the compositor to activate the toplevel, un-minimizing
+it first. It succeeds only when the compositor reports the toplevel activated
+and not minimized, and the AT-SPI frame then reports `ACTIVE` within 6 s. A
+dialog or an open menu counts once the compositor activated it. Headed ref
+actions use the same focus step. Errors keep the X11 causes, with
+`physical_delivery_started: false`:
+
+| Situation | Code or cause | Disposition |
+|-----------|---------------|-------------|
+| Two toplevels cannot be told apart | `ACTION_FAILED`, `ambiguous_window` | `not_delivered` |
+| No matching toplevel | `window_not_mapped` | `not_delivered` |
+| Another window stays active | `activation_refused` | `delivered_unverified` |
+| Nothing became active | `activation_not_granted` | `delivered_unverified` |
+| The frame never reports `ACTIVE` | `frame_not_active` | `delivered_unverified` |
+| The request could not be sent | `activation_not_sent` | `uncertain` |
+| The window closed during activation | `WINDOW_NOT_FOUND` | `delivered_unverified` |
+
+A labwc seat that has never had a keyboard gives no window `ACTIVE`. In that
+case `focus-window` attaches a virtual keyboard that sends no key while it
+checks the frame. labwc keeps that keyboard on the seat, which also lets a later
+headed `type` pass its focus check.
+
+**`minimize`, `maximize` and `restore`** set the toplevel state and read it back
+from the compositor within 2 s. Reports match X11: `minimize` and `maximize` are
+`delivered_verified` with `verification_scope` `window_minimized_state` or
+`window_maximized_state`; `restore` un-minimizes and un-maximizes and reports
+`delivered_unverified`, and a plain window gets no request. A state the
+compositor does not apply is `ACTION_FAILED`, cause `readback_mismatch`, with
+`requested` and `observed` (`minimized`, `maximized`, `activated`,
+`fullscreen`), `delivered_unverified`.
+
+**`move-window` and `resize-window`** are refused, because no wlroots protocol
+lets a client move or resize another client's window: `ACTION_NOT_SUPPORTED`,
+cause `wlroots_no_geometry_control`, `physical_delivery_started: false`,
+`not_delivered`. Invalid coordinates or sizes are still `INVALID_ARGS`.
+
+**Graceful `close-app`** sends the protocol's close to each toplevel whose title
+matches one of the app's AT-SPI frames, then waits for the process to exit as on
+X11: an open save prompt ends `dialog_pending`, a timeout `waited_out`. Twins
+are `AMBIGUOUS_TARGET`, cause `ambiguous_window`, with `candidates`. Because the
+match is by title, a frame titled like another app's only toplevel would match
+that toplevel. `--force` is unchanged.
+
+**`list-windows`** marks a window whose toplevel is minimized `minimized: true`,
+`visible: false`, and, when no frame reports focus, the activated toplevel's
+window `is_focused: true`. Windows carry no bounds, because the compositor
+gives no position.
 
 ## Workspaces
 
@@ -280,9 +348,9 @@ Headless `press --app <name>` delivers only while the target process owns the
 active window. On X11 a background or minimized app is refused: `ACTION_FAILED`,
 `check: window_active`, cause `display_active_window`, `not_delivered`; the
 message says the application's active window could not be confirmed. `--headed`
-brings the window forward, un-minimizes it and sends the keys (X11). On Wayland,
-`focus-window` and headed app- or window-scoped `press` refuse with
-`ACTION_NOT_SUPPORTED`, cause `wayland_session`, Xwayland clients included.
+brings the window forward, un-minimizes it and sends the keys (X11 and wlroots).
+On GNOME Wayland, `focus-window` and headed app- or window-scoped `press` refuse
+with `ACTION_NOT_SUPPORTED`, cause `wayland_session`, Xwayland clients included.
 
 Headless scoped `press` does not activate a window: it requires the live focus
 guard to confirm the target. If focus cannot be confirmed, bring the target
@@ -326,7 +394,8 @@ diffs a baseline taken at the start against fresh reads. On Linux:
   window is found only when `--app` scopes the wait, and it appears 0.7 to 1.5 s
   after the action that opened it.
 - `focus-changed` needs a window that reports `ACTIVE`. On Wayland none does
-  until a seat keyboard exists, so it times out with `baseline_counts`.
+  until a seat keyboard exists, so it times out with `baseline_counts`. On
+  labwc, `focus-window` attaches one.
 - A wait scoped to a stopped app fails at once with top-level
   `APP_UNRESPONSIVE`, `not_delivered` and `retry: safe`, not `TIMEOUT`, in every
   mode (`--event` included). A `batch` of an action followed by such a wait does

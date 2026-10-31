@@ -55,7 +55,7 @@ agent-desktop --headed hover --xy 640,400
 }
 ```
 
-For a ref, the cursor goes to the center of the live bounds after visibility, stability, and hit-test checks. On macOS the position is read back and the result is `delivered_verified`. Errors: `INVALID_ARGS` for a missing target or bad coordinates; `ACTION_NOT_SUPPORTED` with cause `wayland_session` on Linux Wayland; `ACTION_FAILED` when another element covers the target; the ref errors `STALE_REF`, `AMBIGUOUS_TARGET`, and `SNAPSHOT_NOT_FOUND`.
+For a ref, the cursor goes to the center of the live bounds after visibility, stability, and hit-test checks. On macOS the position is read back and the result is `delivered_verified`. Errors: `INVALID_ARGS` for a missing target or bad coordinates; `ACTION_NOT_SUPPORTED` with cause `wayland_session` on Linux GNOME Wayland; `ACTION_FAILED` when another element covers the target; the ref errors `STALE_REF`, `AMBIGUOUS_TARGET`, and `SNAPSHOT_NOT_FOUND`.
 
 ## drag
 

@@ -12,19 +12,29 @@ A stale `WAYLAND_DISPLAY` from another session falls through to a working
 `DISPLAY`. With neither reachable, display-dependent commands fail with cause
 `not_configured`, `missing` or `refused` and list the variables they tried.
 
+On Wayland the CLI then reads the compositor's registry globals. A compositor
+that offers `wl_seat`, `zwp_virtual_keyboard_manager_v1` and
+`zwlr_virtual_pointer_manager_v1` takes the wlroots route; any other compositor
+takes the GNOME (Mutter) route. The compositor's name is never consulted, so
+labwc, sway and other wlroots compositors are chosen by what they offer. The
+wlroots route also uses `zwlr_screencopy_manager_v1`,
+`zwlr_foreign_toplevel_manager_v1` and the ext toplevel capture protocols when
+they are offered; see "wlroots compositors" below.
+
 ## X11 versus Wayland
 
-| Capability | X11 | Wayland (GNOME) |
-|------------|-----|-----------------|
-| Observation, semantic ref actions | AT-SPI, no tool | AT-SPI, no tool |
-| Keys, `press`, text keys | XTEST in process, live keymap | Mutter RemoteDesktop, keysyms |
-| App pointer: `hover`, `drag`, `mouse-*`, physical click, wheel | XTEST, `--headed` | None: `ACTION_NOT_SUPPORTED` with `physical_delivery_started: false` |
-| Window ops | EWMH on the X11 display | Xwayland clients only; native windows and un-minimize refused |
-| `focus-window`, headed scoped `press` | EWMH activation, then keys for `press` | Refused with `ACTION_NOT_SUPPORTED`, cause `wayland_session`, Xwayland clients included |
-| Headless scoped `press` | Live display and frame focus guards, no activation | Live frame focus guard, no activation |
-| `screenshot` | Window or display; primary display by default | Portal consent; primary display by default, `--screen` picks a monitor |
-| Clipboard | Native selection owner | `wl-clipboard` |
-| GNOME Shell ref click, popup opener | `--headed`, receiver proof from the shell's own tree | Ref click refused with `wayland_session`, popup opener refused as unproven; see shell reference |
+| Capability | X11 | Wayland (GNOME) | Wayland (wlroots, labwc) |
+|------------|-----|-----------------|--------------------------|
+| Observation, semantic ref actions | AT-SPI, no tool | AT-SPI, no tool | AT-SPI, no tool |
+| Keys, `press`, text keys | XTEST in process, live keymap | Mutter RemoteDesktop, keysyms | Virtual keyboard with a generated keymap; any Unicode character |
+| App pointer: `hover`, `drag`, `mouse-*`, physical click, wheel | XTEST, `--headed` | None: `ACTION_NOT_SUPPORTED` with `physical_delivery_started: false` | Virtual pointer, `--headed`; coordinate commands work, ref aiming is limited (see below) |
+| Window ops | EWMH on the X11 display | Xwayland clients only; native windows and un-minimize refused | `minimize`, `maximize`, `restore` through `zwlr_foreign_toplevel_manager_v1`, Xwayland included; `move-window` and `resize-window` refused |
+| `focus-window`, headed scoped `press` | EWMH activation, then keys for `press` | Refused with `ACTION_NOT_SUPPORTED`, cause `wayland_session`, Xwayland clients included | Toplevel activation, verified by the compositor and the AT-SPI frame |
+| Headless scoped `press` | Live display and frame focus guards, no activation | Live frame focus guard, no activation | Live frame focus guard, no activation |
+| `screenshot` | Window or display; primary display by default | Portal consent; primary display by default, `--screen` picks a monitor | Screencopy, no consent; a window needs the toplevel capture protocol |
+| `list-displays` | RandR | Mutter `DisplayConfig` | `wl_output` and `xdg_output` |
+| Clipboard | Native selection owner | `wl-clipboard` | `wl-clipboard` |
+| GNOME Shell ref click, popup opener | `--headed`, receiver proof from the shell's own tree | Ref click refused with `wayland_session`, popup opener refused as unproven; see shell reference | Not applicable |
 
 X11 needs no tool beyond the binary and its clipboard helper. `xdotool`,
 `ydotool`, `xclip` and `wmctrl` are not used. `wl-clipboard` is the one outside
@@ -46,12 +56,14 @@ synthetic pointer path moves the user's real cursor.
   `not_delivered`; `details.physical_fallback` records the skipped
   `physical_input` step and refusal. Focus, policy, timeout, uncertain and
   partial-delivery refusals never fall back.
-- On Wayland the CLI's pointer gate runs before that fallback: ordinary-app
-  headed pointer commands are refused at once with `ACTION_NOT_SUPPORTED`, cause
-  `wayland_session` and `physical_delivery_started: false` (`click`, `hover`,
-  `double-click`, `mouse-wheel`, `mouse-down` and `select` included). A
-  headed `type` sends keys through `RemoteDesktop.type_text` once the Mutter
-  capability probe succeeds.
+- On GNOME Wayland the CLI's pointer gate runs before that fallback:
+  ordinary-app headed pointer commands are refused at once with
+  `ACTION_NOT_SUPPORTED`, cause `wayland_session` and
+  `physical_delivery_started: false` (`click`, `hover`, `double-click`,
+  `mouse-wheel`, `mouse-down` and `select` included). A headed `type` sends keys
+  through `RemoteDesktop.type_text` once the Mutter capability probe succeeds.
+  The wlroots route has a virtual pointer and does not refuse up front; see
+  "wlroots compositors".
 - Windows works the other way round (semantic first); do not carry that
   assumption across platforms.
 
@@ -117,13 +129,15 @@ agent-desktop press return --app gnome-text-editor
   `press --window-id` also requires the exact window's focus. A background or
   minimized target is refused. See `references/windows-and-lifecycle.md`.
 - Keys carry the Shift level the live keymap needs. On X11 `press` takes only
-  keys the active layout maps and the named keysyms above; on Wayland it takes
-  printable ASCII, function and modifier keysyms without reading the layout. A
-  character the layout cannot produce (`é`, `你`) is refused and not delivered
-  (`INVALID_ARGS` on X11, `ACTION_NOT_SUPPORTED` with `character_outside_layout`
-  on Wayland). On X11, `--headed type` sends such a character through spare
-  keycodes; on Wayland it refuses it, so use headless `type` or `set-value` for
-  accents and non-Latin text.
+  keys the active layout maps and the named keysyms above; on GNOME Wayland it
+  takes printable ASCII, function and modifier keysyms without reading the
+  layout. A character the layout cannot produce (`é`, `你`) is refused and not
+  delivered (`INVALID_ARGS` on X11, `ACTION_NOT_SUPPORTED` with
+  `character_outside_layout` on GNOME Wayland). On X11, `--headed type` sends
+  such a character through spare keycodes; on GNOME Wayland it refuses it, so
+  use headless `type` or `set-value` for accents and non-Latin text. On a
+  wlroots compositor every character is one key of a generated keymap, so
+  `press` and `--headed type` send `é` and `你` too.
 
 ### Blocked combos
 
@@ -153,7 +167,8 @@ empty insertion is dispatched.
   `--timeout-ms`, `type` waits 5000 ms plus 30 ms per character; an explicit
   `--timeout-ms` replaces that.
 - Under `--headed` it sends physical keys first (step `XTEST.type_text` on X11,
-  `RemoteDesktop.type_text` on Wayland, `physical_synthetic`; the result still
+  `RemoteDesktop.type_text` on GNOME Wayland, `VirtualKeyboard.type_text` on
+  wlroots, `physical_synthetic`; the result still
   reads the field back when it can) and falls back to `EditableText` only where
   keys cannot be sent. It proves focus on the field or its proven internal
   editor; focus elsewhere in the window does not authorize ref typing. Verify
@@ -167,8 +182,9 @@ empty insertion is dispatched.
   inside a text burst. Use headless `type` or `set-value` for literal text with
   those characters, and an explicit `press tab` or `press return` for
   navigation or submission. On Wayland, `--headed type` sends a newline as
-  `Return` and a tab as `Tab`, which can submit a form or move focus; other
-  control characters are refused with `character_outside_layout`.
+  `Return` and a tab as `Tab`, which can submit a form or move focus. Other
+  control characters are refused before any key: with
+  `character_outside_layout` on GNOME, with `control_character` on wlroots.
 - X11 physical text checks the live keyboard state before each chunk. If that
   state is unsupported, the physical route refuses before that chunk's keys; the
   semantic fallback applies only if no key was sent, since earlier chunks report
@@ -177,9 +193,9 @@ empty insertion is dispatched.
   from the snapshot still resolves: `get` on it reads the typed value. Take a
   fresh snapshot only when the UI you address has changed for another reason.
 
-## Wayland keys
+## GNOME Wayland keys
 
-Wayland keys use one detected backend, `org.gnome.Mutter.RemoteDesktop` on the
+GNOME Wayland keys use one detected backend, `org.gnome.Mutter.RemoteDesktop` on the
 session bus. Before creating a session or emitting an event, the adapter probes
 the interface's typed `Version` property. A missing service or capability is
 `PLATFORM_NOT_SUPPORTED`, `not_delivered`, `physical_delivery_started: false`;
@@ -203,6 +219,81 @@ its own. Ending a session releases its held keys.
   `references/shell-tray-and-notifications.md`.
 - **No active window.** On a Wayland session with no seat keyboard no window
   carries `ACTIVE`, so `focus-changed` waits time out.
+
+## wlroots compositors
+
+A compositor on the wlroots route (labwc, sway and others; see "How the display
+server is chosen") gets keys and pointer input through virtual devices that the
+CLI creates on the compositor's seat for each delivery. No D-Bus service, portal
+or outside tool is involved. Destroying a device, or the CLI process dying,
+makes the compositor release every key and button the device still holds.
+
+- **Keys.** Each delivery uploads an XKB keymap generated for exactly the
+  keysyms it sends. Every character, Latin-1 or any other Unicode, is one key,
+  so nothing depends on the user's layout and `character_outside_layout` never
+  occurs. Shift, Control, Alt and Super hold fixed keycodes and the modifier
+  map, so a chord such as `ctrl+a` or `shift+b` carries exactly the modifiers
+  you name. Steps are `VirtualKeyboard.press_key` and
+  `VirtualKeyboard.type_text`, `physical_synthetic`.
+- **Control characters.** `\n` is `Return` and `\t` is `Tab`. Any other control
+  character refuses the whole text before the first key with
+  `ACTION_NOT_SUPPORTED`, cause `control_character`,
+  `physical_delivery_started: false`, `not_delivered`. Remove it, or use
+  `set-value`.
+- **Pointer at coordinates.** `mouse-move`, `mouse-click`, `mouse-wheel` and
+  `drag` with explicit coordinates run under `--headed` through the virtual
+  pointer, in the output layout that `list-displays` reports. Wheel clicks are
+  discrete axis notches. Steps are `VirtualPointer.click` and
+  `VirtualPointer.scroll`. The result is `delivered_unverified`: check the
+  effect.
+- **Pointer at a ref.** `--headed` ref `click`, `right-click`, `double-click`,
+  `triple-click`, `hover`, `drag` and `scroll --headed` need the window's
+  position in the output layout, which AT-SPI does not give on Wayland and no
+  wlroots protocol tells a client. The CLI proves it one of two ways:
+  - The compositor reports the window's toplevel active and maximized or
+    fullscreen: its origin follows from the output geometry and costs no
+    capture. `maximize --window-id <id>` then `focus-window --window-id <id>`
+    puts a window in that state.
+  - The compositor offers `ext_foreign_toplevel_image_capture_source_manager_v1`:
+    the window's own pixels are copied and found in a copy of the output. If
+    something else is drawn over the target point in three proofs taken 300 ms
+    apart, the click is refused with the usual interceptor error ("Another
+    element intercepts the pointer target", `check: receives_events`,
+    interceptor role `window`); a single repaint, such as a hover highlight,
+    does not count.
+
+  Otherwise the action is refused in about 0.2 s before any pointer event,
+  with no semantic fallback: `ACTION_FAILED`, `details.kind:
+  "wlroots_window_origin_unproven"`, `window_id`, `retryable: false`,
+  `physical_delivery_started: false`, disposition `not_delivered` (retry
+  `safe`). The message is "The compositor does not reveal where this window is
+  drawn, so no pointer event was sent" and the suggestion is "Run 'maximize
+  --window-id <id>' and 'focus-window --window-id <id>', then retry; or run the
+  action without --headed to act through accessibility; or click a point you
+  located yourself with 'mouse-click --xy'". Xwayland windows take the same
+  compositor path: their X11 position matches the screen, but X11 stacking
+  cannot see native Wayland windows above them. The hit test ignores children
+  that are neither `VISIBLE` nor `SHOWING`, such as the invisible full-window
+  panel Chromium keeps beside its content.
+- **Focus.** `focus-window` and the focus step of headed ref actions activate
+  the window through `zwlr_foreign_toplevel_manager_v1`; see
+  `references/windows-and-lifecycle.md`. A fresh labwc seat that has never had
+  a keyboard gives no window `ACTIVE`; `focus-window` attaches a virtual
+  keyboard that sends no key so the frame can report it.
+- **Unavailable.** `key-down`, `key-up`, `mouse-down` and `mouse-up` fail closed
+  as on every platform. The cursor overlay is not drawn on any Wayland session.
+
+labwc 0.20.2 offers every protocol above. labwc 0.9.8 has no
+`ext_foreign_toplevel_image_capture_source_manager_v1`, so window screenshots
+refuse there and ref pointer aiming works only on an active maximized or
+fullscreen window.
+
+Each pointer delivery creates a virtual pointer and destroys it afterwards.
+Xwayland (24.1.14, under both labwc versions) takes the first click sent to one
+of its windows; every later click to an Xwayland window is lost, the command
+still reports `delivered_unverified`, and Xwayland logs `pointer_handle_leave`
+BUG errors. Native Wayland windows take every click. Read the effect after
+each pointer command on an Xwayland window, and prefer semantic actions there.
 
 ## Wheel and scroll
 

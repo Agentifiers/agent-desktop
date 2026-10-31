@@ -47,7 +47,7 @@ agent-desktop permissions
 | `permissions` field | Linux value |
 |---------------------|-------------|
 | `accessibility` | `granted` when the bus answered, `denied` with a cause-specific suggestion when it cannot be reached |
-| `screen_recording` | `not_required` on X11; `unknown` on Wayland (only a screenshot request shows the answer) |
+| `screen_recording` | `not_required` on X11 and on a wlroots compositor with `zwlr_screencopy_manager_v1`; `unknown` on other Wayland compositors (only a screenshot request shows the answer) |
 | `automation` | `not_required` |
 
 `permissions --request` has nothing to request on Linux.
@@ -84,6 +84,11 @@ XDG_RUNTIME_DIR=$(mktemp -d) dbus-run-session -- agent-desktop status
 
 The private `XDG_RUNTIME_DIR` (`mktemp -d` makes it mode 0700) keeps the new bus
 launcher away from the live socket.
+
+A private bus started this way has no systemd user manager behind it. On
+distributions that activate `at-spi2-registryd` through systemd (Arch), start
+`/usr/lib/at-spi2-registryd` yourself inside the private session and set
+`org.a11y.Status` `IsEnabled` to true, or no app registers on the bus.
 
 ## Session requirements
 
