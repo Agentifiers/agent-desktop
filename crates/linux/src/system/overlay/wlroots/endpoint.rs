@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use agent_desktop_core::AdapterError;
 
-pub(crate) const PROTOCOL: &str = "v1";
+pub(crate) const PROTOCOL: &str = "v2";
 const MAX_SOCKET_PATH: usize = 107;
 const DEFAULT_DISPLAY: &str = "wayland-0";
 

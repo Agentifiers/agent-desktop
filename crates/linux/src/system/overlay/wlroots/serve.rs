@@ -14,9 +14,11 @@ use std::time::{Duration, Instant};
 
 use agent_desktop_core::{AdapterError, ErrorCode};
 
+use super::canvas::Canvas;
+use super::clock::{Clock, WallClock};
+use super::director::Director;
 use super::endpoint::{PROTOCOL, ensure_private};
 use super::request::{ACKNOWLEDGED, Request};
-use super::roster::Roster;
 use super::stage::Stage;
 
 pub(crate) const MARKER_ENV: &str = "AGENT_DESKTOP_WLR_CURSOR_OVERLAY";
@@ -104,21 +106,24 @@ fn run(
     listener: &UnixListener,
     session: &str,
 ) -> Result<Option<UnixStream>, AdapterError> {
-    let mut roster = Roster::default();
+    let mut director = Director::new(super::look::font::locate());
+    let mut clock = WallClock::start();
     let mut concealers: Vec<UnixStream> = Vec::new();
     let mut checked = Instant::now();
+    let mut wake: Option<Duration> = None;
     loop {
+        let timeout = wake.map_or(SESSION_CHECK, |wake| wake.min(SESSION_CHECK));
         let ready = {
             let fds: Vec<BorrowedFd<'_>> = std::iter::once(listener.as_fd())
                 .chain(concealers.iter().map(AsFd::as_fd))
                 .collect();
-            stage.wait(&fds, SESSION_CHECK)?
+            stage.wait(&fds, timeout)?
         };
         let mut ended = Vec::new();
         let mut kept = Vec::new();
         for (stream, readable) in concealers.drain(..).zip(ready.iter().skip(1)) {
             if *readable && conceal_ended(&stream) {
-                roster.reveal();
+                director.reveal();
                 ended.push(stream);
             } else {
                 kept.push(stream);
@@ -126,7 +131,8 @@ fn run(
         }
         concealers = kept;
         if !ended.is_empty() {
-            roster.render(stage)?;
+            director.draw(stage, clock.now_ms(), 1.0)?;
+            stage.settle()?;
             for mut stream in ended {
                 let _ = stream.write_all(&[ACKNOWLEDGED]);
             }
@@ -138,19 +144,17 @@ fn run(
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
                     Err(error) => return Err(io_failed(error)),
                 };
-                if let Some(disabled) =
-                    serve_one(stream, session, (&mut roster, stage), &mut concealers)?
-                {
+                let served = (&mut director, &mut *stage, &mut clock);
+                if let Some(disabled) = serve_one(stream, session, served, &mut concealers)? {
                     return Ok(Some(disabled));
                 }
             }
         }
+        wake = director.tick(stage, clock.now_ms())?;
         if checked.elapsed() >= SESSION_CHECK {
             if !super::session_gate::serves(session) {
-                roster.apply(&agent_desktop_core::CursorOverlayControl::disable(
-                    session.to_owned(),
-                ));
-                roster.render(stage)?;
+                let disable = agent_desktop_core::CursorOverlayControl::disable(session.to_owned());
+                director.apply(&disable, stage, &mut clock)?;
                 return Ok(None);
             }
             checked = Instant::now();
@@ -161,7 +165,7 @@ fn run(
 fn serve_one(
     mut stream: UnixStream,
     session: &str,
-    (roster, stage): (&mut Roster, &mut Stage),
+    (director, stage, clock): (&mut Director, &mut Stage, &mut WallClock),
     concealers: &mut Vec<UnixStream>,
 ) -> Result<Option<UnixStream>, AdapterError> {
     if stream.set_nonblocking(false).is_err()
@@ -175,19 +179,18 @@ fn serve_one(
     };
     match request {
         Request::Conceal => {
-            roster.conceal();
-            roster.render(stage)?;
+            director.conceal();
+            director.draw(stage, clock.now_ms(), 1.0)?;
+            stage.settle()?;
             if stream.write_all(&[ACKNOWLEDGED]).is_ok() && stream.set_nonblocking(true).is_ok() {
                 concealers.push(stream);
             } else {
-                roster.reveal();
-                roster.render(stage)?;
+                director.reveal();
+                director.draw(stage, clock.now_ms(), 1.0)?;
             }
         }
         Request::Control(control) if control.session_id() == session => {
-            let serving = roster.apply(&control);
-            roster.render(stage)?;
-            if !serving {
+            if !director.apply(&control, stage, clock)? {
                 return Ok(Some(stream));
             }
             let _ = stream.write_all(&[ACKNOWLEDGED]);

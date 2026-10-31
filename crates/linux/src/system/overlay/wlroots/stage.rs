@@ -1,12 +1,13 @@
 //! The helper's connection to the compositor and the markers drawn on it.
 //! A marker lives on the output that holds its point and is moved there by
-//! margins, so a move costs one commit and damages two marker-sized boxes.
+//! margins, so a frame costs one small buffer and damages only the boxes the
+//! cursor's frame covered and covers.
 
 use std::collections::BTreeMap;
 use std::os::fd::{AsFd, BorrowedFd};
 use std::time::Duration;
 
-use agent_desktop_core::{AdapterError, CursorOverlayStyle, Deadline, ErrorCode, Point};
+use agent_desktop_core::{AdapterError, Deadline, ErrorCode, Point, Rect};
 use wayland_client::Proxy;
 use wayland_client::backend::WaylandError;
 use wayland_client::protocol::wl_output::WlOutput;
@@ -14,12 +15,14 @@ use wayland_client::protocol::wl_registry::WlRegistry;
 
 use super::bound::Bound;
 use super::canvas::{AgentKey, Canvas};
-use super::marker_surface::MarkerSurface;
-use super::painted::Painted;
+use super::look::raster::Surface;
+use super::marker_surface::{MarkerSurface, Placement};
 use super::stage_state::StageState;
 use crate::system::wlroots::link::{Link, protocol_failed};
 use crate::system::wlroots::output::Output;
 use crate::system::wlroots::outputs::read_outputs;
+use crate::system::wlroots::shm::{BufferSpec, ShmBuffer};
+use wayland_client::protocol::wl_shm::Format;
 
 const STEP_MS: u64 = 2_000;
 
@@ -169,19 +172,51 @@ impl Stage {
     }
 }
 
+fn cropped(surface: &Surface, origin: &Point, screen: &Rect) -> Option<(Vec<u8>, Placement)> {
+    let left = (origin.x.round() as i32).max(screen.x as i32);
+    let top = (origin.y.round() as i32).max(screen.y as i32);
+    let right = (origin.x.round() as i32 + surface.width).min((screen.x + screen.width) as i32);
+    let bottom = (origin.y.round() as i32 + surface.height).min((screen.y + screen.height) as i32);
+    if right <= left || bottom <= top {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(((right - left) * (bottom - top) * 4) as usize);
+    for y in top..bottom {
+        for x in left..right {
+            let pixel = surface
+                .pixel_at(x - origin.x.round() as i32, y - origin.y.round() as i32)
+                .unwrap_or(0);
+            bytes.extend_from_slice(&pixel.to_le_bytes());
+        }
+    }
+    let placement = Placement {
+        margin: (left - screen.x as i32, top - screen.y as i32),
+        size: (right - left, bottom - top),
+    };
+    Some((bytes, placement))
+}
+
 impl Canvas for Stage {
-    fn show(
+    fn screen_at(&self, point: &Point) -> Option<Rect> {
+        let outputs: Vec<Output> = self.outputs.iter().map(|o| o.2.clone()).collect();
+        locate(&outputs, point).map(|(index, _)| outputs[index].rect())
+    }
+
+    fn present(
         &mut self,
         agent: &AgentKey,
-        point: &Point,
-        style: &CursorOverlayStyle,
+        tip: &Point,
+        (origin, surface): (&Point, &Surface),
     ) -> Result<(), AdapterError> {
         self.refresh()?;
         let outputs: Vec<Output> = self.outputs.iter().map(|o| o.2.clone()).collect();
-        let Some((index, margin)) = locate(&outputs, point) else {
+        let Some((index, _)) = locate(&outputs, tip) else {
             return self.hide(agent);
         };
         let (_, handle, output) = &self.outputs[index];
+        let Some((bytes, placement)) = cropped(surface, origin, &output.rect()) else {
+            return self.hide(agent);
+        };
         if self
             .markers
             .get(agent)
@@ -199,34 +234,28 @@ impl Canvas for Stage {
             );
             self.markers.insert(agent.clone(), marker);
         }
+        let spec = BufferSpec {
+            width: placement.size.0.unsigned_abs(),
+            height: placement.size.1.unsigned_abs(),
+            stride: placement.size.0.unsigned_abs() * 4,
+            format: Format::Argb8888 as u32,
+        };
+        let buffer = ShmBuffer::create(&self.bound.shm, spec, &self.link.handle)?;
+        buffer.write(&bytes)?;
         let Some(marker) = self.markers.get_mut(agent) else {
             return Ok(());
         };
-        let repainted = marker
-            .painted
-            .as_ref()
-            .is_none_or(|painted| painted.style != *style);
-        let retired = if repainted {
-            marker
-                .painted
-                .replace(Painted::draw(&self.bound.shm, style, &self.link.handle)?)
-        } else {
-            None
-        };
-        if marker.is_mapped() {
-            marker.update(margin, repainted);
-            drop(retired);
-            return Ok(());
+        if !marker.is_mapped() {
+            let id = marker.id;
+            self.state.configured.retain(|configured| *configured != id);
+            marker.request_map(&self.bound, placement, &self.link.handle);
+            self.wait_configured(id)?;
         }
-        drop(retired);
-        let id = marker.id;
-        self.state.configured.retain(|configured| *configured != id);
-        marker.request_map(&self.bound, margin, &self.link.handle);
-        self.wait_configured(id)?;
+        let released = std::mem::take(&mut self.state.released);
         if let Some(marker) = self.markers.get_mut(agent) {
-            marker.finish_map();
+            marker.show(buffer, placement, &released);
         }
-        Ok(())
+        self.pump()
     }
 
     fn hide(&mut self, agent: &AgentKey) -> Result<(), AdapterError> {

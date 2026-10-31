@@ -1,22 +1,25 @@
 //! The cursor overlay on a wlroots compositor. A Wayland surface lives only
 //! as long as its client, so each session's markers are held by a helper
 //! process the first enable or present starts; commands reach it over a
-//! private socket. Markers follow the X11 overlay: the same arrow, moved to
-//! where each action lands, hidden and shown with the session, and kept out
-//! of every capture this tool takes.
+//! private socket. The cursor looks and moves like the Windows and macOS
+//! overlays - the dart gliding along the shared hand path, the click ripple,
+//! the target highlight and the label card - is routed to agents like the
+//! X11 overlay, and is kept out of every capture this tool takes.
 
-mod arrow;
 mod bound;
 mod canvas;
 mod client;
+mod clock;
+mod director;
+mod effect;
 mod endpoint;
-mod marker_state;
+mod look;
 mod marker_surface;
-mod painted;
+mod paint;
 mod poll;
-mod raster;
+mod presentation;
 mod request;
-mod roster;
+mod rest;
 mod serve;
 mod session_gate;
 mod spawn;
