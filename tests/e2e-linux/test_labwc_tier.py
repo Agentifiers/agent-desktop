@@ -207,6 +207,35 @@ class BrowserTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             labwc_browser.browser_binary(lambda name: False)
 
+    def test_hidden_hit_names_only_text_the_button_claims_but_does_not_list(self):
+        class Node(SimpleNamespace):
+            def invoke(self, interface, method, signature, args):
+                self.asked = args
+                return [(self.bus, self.lands)]
+
+            def extents(self, window_coords=False):
+                return (8, 95, 62, 21)
+
+            def children(self):
+                return self.listed
+
+            def get_property(self, interface, name):
+                return self.parent
+
+        frame = Node(bus=":1.2", path="/frame", connection=object(), lands="/text")
+        button = Node(bus=":1.2", path="/button", listed=[])
+        text = Node(bus=":1.2", path="/text", parent=(":1.2", "/button"))
+        with mock.patch.object(labwc_browser.raw, "RawNode", lambda conn, bus, path: text):
+            self.assertIs(labwc_browser.hidden_hit(frame, button), text)
+            self.assertEqual(frame.asked, (39, 105, 1))
+            button.listed = [text]
+            self.assertIsNone(labwc_browser.hidden_hit(frame, button))
+            button.listed = []
+            text.parent = (":1.2", "/section")
+            self.assertIsNone(labwc_browser.hidden_hit(frame, button))
+            frame.lands = "/button"
+            self.assertIsNone(labwc_browser.hidden_hit(frame, button))
+
 
 class PressLegTests(unittest.TestCase):
     def test_press_leg_passes_on_real_keys_and_fails_on_a_lying_product(self):

@@ -19,7 +19,10 @@ from runner.verdict import LegContext
 from scenarios.headed_actions import find_ref
 
 HEADING = 83
+PUSH_BUTTON = 43
 FRAME_ROLES = (23, 69)
+COMPONENT = "org.a11y.atspi.Component"
+WINDOW_COORDS = 1
 WAITING = "Waiting"
 CLICKED = "Clicked"
 PAGE = f"""<!doctype html>
@@ -119,6 +122,22 @@ def headings(root) -> tuple[str, ...]:
     return tuple(node.name for node in root.walk() if node.role == HEADING)
 
 
+def hidden_hit(frame, button):
+    """The node the frame's point query names at the button's centre when it is content the
+    button hides: its `Parent` is the button, yet the button lists no children. Chromium
+    answers the first query at a point with the button and, once its renderer has hit-tested
+    the point, later queries there with the button's text node."""
+    x, y, width, height = button.extents(window_coords=True)
+    bus, path = frame.invoke(COMPONENT, "GetAccessibleAtPoint", "(iiu)",
+                             (x + width // 2, y + height // 2, WINDOW_COORDS))[0]
+    if path == button.path or path == "/org/a11y/atspi/null":
+        return None
+    node = raw.RawNode(frame.connection, bus or frame.bus, path)
+    if tuple(node.get_property(raw.ACCESSIBLE, "Parent")) != (button.bus, button.path):
+        return None
+    return node if not button.children() else None
+
+
 @implementation("labwc.chromium_headed_click")
 def chromium_headed_click(ctx: LegContext) -> None:
     with tempfile.TemporaryDirectory(prefix="chromium-", dir=ctx.tier.runtime_dir) as directory:
@@ -138,9 +157,15 @@ def chromium_headed_click(ctx: LegContext) -> None:
                                window_id=window)
             ref = find_ref((snapshot.data or {}).get("tree"), name="Press me", role="button")
             require(ref is not None, "the page button has no ref")
+            buttons = [node for node in root.walk()
+                       if node.role == PUSH_BUTTON and node.name == "Press me"]
+            require(len(buttons) == 1, f"expected one raw page button, found {len(buttons)}")
+            require(raw.poll(lambda: hidden_hit(frame, buttons[0]), 10.0) is not None,
+                    "the browser's point query never named the button's hidden text node")
             command(ctx, ["click", ref])
             ctx.after("atspi.heading", changed(read, (CLICKED,), seconds=5))
-            reload = [node for node in root.walk() if node.role == 43 and node.name == "Reload"]
+            reload = [node for node in root.walk()
+                      if node.role == PUSH_BUTTON and node.name == "Reload"]
             require(len(reload) == 1, f"expected one raw Reload button, found {len(reload)}")
             activate(reload[0])
             command(ctx, ["restore"], window_id=window)
