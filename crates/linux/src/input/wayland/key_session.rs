@@ -18,4 +18,11 @@ pub(crate) trait KeySession {
     fn retain(&self) -> bool {
         false
     }
+
+    /// Whether a new session taps a lone Shift before the real keys so the
+    /// compositor attaches its keyboard. Mutter needs the tap; a virtual
+    /// keyboard whose keymap is uploaded with the device does not.
+    fn leads_with_shift(&self) -> bool {
+        true
+    }
 }

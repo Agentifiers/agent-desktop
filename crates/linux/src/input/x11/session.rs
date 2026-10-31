@@ -9,7 +9,7 @@ use agent_desktop_core::{AdapterError, Deadline, ErrorCode, InteractionLease};
 use super::held_journal::HeldJournal;
 use super::progress::Progress;
 use super::signal_release;
-use super::sink::X11Sink;
+use super::sink::InputSink;
 use super::sink_error::SinkError;
 use super::worker::{self, ABORT_SUGGESTION, Link, Report};
 use super::worker_slot::{self, WorkerSlot};
@@ -68,7 +68,7 @@ pub(crate) fn live_keymap(display: &str, lease: &InteractionLease) -> Result<Key
     )
 }
 
-fn read_keymap<S: X11Sink + 'static>(
+fn read_keymap<S: InputSink + 'static>(
     open: impl FnOnce() -> Result<S, AdapterError> + Send + 'static,
     journal: Option<HeldJournal>,
     slot: Arc<WorkerSlot>,
@@ -90,7 +90,7 @@ fn read_keymap<S: X11Sink + 'static>(
         .unwrap_or_else(|| Err(worker::mark_started(deadline.timeout_error(), false)))
 }
 
-pub(crate) fn run_journaled<S: X11Sink + 'static>(
+pub(crate) fn run_journaled<S: InputSink + 'static>(
     open: impl FnOnce() -> Result<S, AdapterError> + Send + 'static,
     plans: Vec<Plan>,
     gate: Gate<'_>,

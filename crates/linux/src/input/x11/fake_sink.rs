@@ -11,7 +11,7 @@ use super::pointer_read::PointerRead;
 
 use super::sink_error::SinkError;
 
-use super::sink::X11Sink;
+use super::sink::InputSink;
 use crate::input::keyboard::keymap::Keymap;
 use crate::input::keyboard::keymap_edit::KeymapEdit;
 use crate::input::plan::Plan;
@@ -150,7 +150,7 @@ impl FakeSink {
     }
 }
 
-impl X11Sink for FakeSink {
+impl InputSink for FakeSink {
     fn key(&mut self, code: u8, down: bool) -> Result<(), SinkError> {
         self.admit(Recorded::Key(code, down))?;
         let mut world = self.world();

@@ -29,11 +29,27 @@ fn an_x11_answer_selects_the_x11_route_with_its_display() {
 }
 
 #[test]
-fn a_wayland_answer_selects_the_wayland_route() {
+fn a_wayland_answer_without_wlroots_input_selects_the_wayland_route() {
     assert_eq!(
-        resolve(DisplayServer::Wayland).expect("wayland routes"),
+        resolve_with(DisplayServer::Wayland, || false).expect("wayland routes"),
         Route::Wayland
     );
+}
+
+#[test]
+fn a_wayland_compositor_with_wlroots_input_selects_the_wlroots_route() {
+    assert_eq!(
+        resolve_with(DisplayServer::Wayland, || true).expect("wlroots routes"),
+        Route::Wlroots
+    );
+}
+
+#[test]
+fn an_x11_session_never_asks_for_wayland_globals() {
+    let route = resolve_with(DisplayServer::X11(":3".into()), || {
+        panic!("an X11 session must not probe a compositor")
+    });
+    assert_eq!(route.expect("x11 routes"), Route::X11(":3".into()));
 }
 
 #[test]

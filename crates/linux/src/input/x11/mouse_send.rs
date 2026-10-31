@@ -1,6 +1,7 @@
 use agent_desktop_core::{AdapterError, InteractionLease, MouseEvent, MouseEventKind};
 
 use super::session;
+use crate::input::keyboard::keymap::Keymap;
 use crate::input::mouse::pointer_plan::{plan_click, plan_move};
 use crate::input::mouse::wheel_plan::plan_wheel;
 use crate::input::plan::Plan;
@@ -16,10 +17,15 @@ pub(crate) fn plans_for(
     } else {
         session::live_keymap(display, lease)?
     };
+    plans_with(&map, event)
+}
+
+/// The plans of one mouse event, with modifier keys taken from `map`.
+pub(crate) fn plans_with(map: &Keymap, event: &MouseEvent) -> Result<Vec<Plan>, AdapterError> {
     match &event.kind {
         MouseEventKind::Move => plan_move(event.point.clone()).map(|plan| vec![plan]),
         MouseEventKind::Click { count } => plan_click(
-            &map,
+            map,
             event.point.clone(),
             &event.button,
             *count,
@@ -27,7 +33,7 @@ pub(crate) fn plans_for(
         )
         .map(|plan| vec![plan]),
         MouseEventKind::Wheel { delta_x, delta_y } => plan_wheel(
-            &map,
+            map,
             event.point.clone(),
             *delta_x,
             *delta_y,

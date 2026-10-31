@@ -14,7 +14,7 @@ use super::pointer_read::PointerRead;
 
 use super::sink_error::SinkError;
 
-use super::sink::X11Sink;
+use super::sink::InputSink;
 use crate::input::keyboard::keymap::Keymap;
 use crate::input::keyboard::keymap_edit::KeymapEdit;
 
@@ -164,7 +164,7 @@ impl XtestSink {
     }
 }
 
-impl X11Sink for XtestSink {
+impl InputSink for XtestSink {
     fn key(&mut self, code: u8, down: bool) -> Result<(), SinkError> {
         self.fake(if down { KEY_PRESS } else { KEY_RELEASE }, code, 0, 0)
     }

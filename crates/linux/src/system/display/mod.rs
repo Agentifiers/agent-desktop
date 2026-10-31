@@ -163,13 +163,31 @@ pub(crate) fn list_wayland_displays(deadline: Deadline) -> Result<Vec<DisplayInf
     )
 }
 
+/// The displays of a wlroots compositor from its `wl_output` and
+/// `zxdg_output_v1` globals, in layout coordinates.
+pub(crate) fn list_wlroots_displays(deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
+    let outputs = crate::system::wlroots::outputs::list(deadline)?;
+    let displays = crate::system::wlroots::output::to_displays(&outputs);
+    if displays.is_empty() {
+        return Err(AdapterError::new(
+            ErrorCode::PlatformNotSupported,
+            "The Wayland compositor advertises no output",
+        ));
+    }
+    Ok(displays)
+}
+
 /// Lists the session's displays. On X11 the monitor list comes from RandR
 /// and Mutter's `DisplayConfig` supplies each monitor's scale where it
-/// answers; on Wayland Mutter is the only measured source and a session
-/// without it is `PLATFORM_NOT_SUPPORTED`.
+/// answers. On Wayland a wlroots compositor lists its outputs itself;
+/// otherwise Mutter is the only measured source and a session without it is
+/// `PLATFORM_NOT_SUPPORTED`.
 pub(crate) fn list_displays(deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
     match session_server() {
-        DisplayServer::Wayland => list_wayland_displays(deadline),
+        DisplayServer::Wayland => match route::resolve(DisplayServer::Wayland) {
+            Ok(route::Route::Wlroots) => list_wlroots_displays(deadline),
+            _ => list_wayland_displays(deadline),
+        },
         DisplayServer::X11(display) => {
             let pending = x11::start(|| MonitorReader.read());
             let mutter =

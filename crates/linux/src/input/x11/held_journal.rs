@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use agent_desktop_core::{AdapterError, DeliverySemantics, ErrorCode};
 use serde_json::{Value, json};
 
-use super::sink::X11Sink;
+use super::sink::InputSink;
 use super::sink_error::SinkError;
 use crate::input::held_input::HeldInput;
 use crate::input::keyboard::keymap_edit::KeymapEdit;
@@ -211,7 +211,7 @@ impl HeldJournal {
         !self.stale_entries(&process_is_alive).is_empty()
     }
 
-    pub(crate) fn release_readable_stale(&self, sink: &mut dyn X11Sink) {
+    pub(crate) fn release_readable_stale(&self, sink: &mut dyn InputSink) {
         for record in self.scan(&process_is_alive) {
             if let Record::Entry(entry) = record {
                 let _ = release_entry(sink, &entry);
@@ -220,13 +220,13 @@ impl HeldJournal {
     }
 
     /// Recovers pending input, including this process's previous call, while owning the worker slot.
-    pub(crate) fn release_stale(&self, sink: &mut dyn X11Sink) -> Result<(), AdapterError> {
+    pub(crate) fn release_stale(&self, sink: &mut dyn InputSink) -> Result<(), AdapterError> {
         self.release_stale_where(sink, &process_is_alive)
     }
 
     fn release_stale_where(
         &self,
-        sink: &mut dyn X11Sink,
+        sink: &mut dyn InputSink,
         alive: &dyn Fn(u32, &str) -> bool,
     ) -> Result<(), AdapterError> {
         let mut unreadable = 0_usize;
@@ -252,7 +252,7 @@ impl HeldJournal {
     }
 }
 
-fn release_entry(sink: &mut dyn X11Sink, entry: &StaleEntry) -> Result<(), SinkError> {
+fn release_entry(sink: &mut dyn InputSink, entry: &StaleEntry) -> Result<(), SinkError> {
     let mut recovered = Ok(());
     for code in &entry.buttons {
         recovered = recovered.and(sink.button(*code, false));

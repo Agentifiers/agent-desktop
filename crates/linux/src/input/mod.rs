@@ -13,4 +13,5 @@ pub(crate) mod release_state;
 pub(crate) mod standalone;
 pub(crate) mod step;
 pub(crate) mod wayland;
+pub(crate) mod wlroots;
 pub(crate) mod x11;

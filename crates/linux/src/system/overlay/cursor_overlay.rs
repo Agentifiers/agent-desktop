@@ -36,7 +36,8 @@ pub(crate) fn update(control: &CursorOverlayControl) -> Result<(), AdapterError>
     let deadline = Deadline::after(4_000)?;
     let display = match crate::system::display::display_server::require(deadline)? {
         crate::system::display::route::Route::X11(display) => display,
-        crate::system::display::route::Route::Wayland => {
+        crate::system::display::route::Route::Wayland
+        | crate::system::display::route::Route::Wlroots => {
             return Err(AdapterError::not_supported("cursor overlay on Wayland")
                 .with_details(serde_json::json!({"rendered": false, "cause": "wayland_session"})));
         }

@@ -42,7 +42,7 @@ pub(crate) fn target_steps(
                     let plans = crate::input::keyboard::text_plan::plan_text(&map, text)?;
                     world.send_plans(plans, &mut gate, deadline)?;
                 }
-                Backend::Wayland => {
+                Backend::Wayland | Backend::Wlroots => {
                     let chunks = crate::input::keyboard::text_plan::plan_text_keysyms(text);
                     world.send_keysyms(&chunks, &mut gate, deadline)?;
                 }
@@ -138,7 +138,7 @@ fn send_combo(
             let plan = crate::input::keyboard::key_plan::plan_combo(&map, combo)?;
             world.send_plans(vec![plan], gate, deadline)?;
         }
-        Backend::Wayland => {
+        Backend::Wayland | Backend::Wlroots => {
             let keys = crate::input::keyboard::key_plan::plan_keysyms(combo)?;
             world.send_keysyms(&[keys], gate, deadline)?;
         }
@@ -152,6 +152,8 @@ fn physical_step(backend: &Backend, operation: &'static str) -> ActionStep {
         (Backend::X11(_), _) => "XTEST.press_key",
         (Backend::Wayland, "type_text") => "RemoteDesktop.type_text",
         (Backend::Wayland, _) => "RemoteDesktop.press_key",
+        (Backend::Wlroots, "type_text") => "VirtualKeyboard.type_text",
+        (Backend::Wlroots, _) => "VirtualKeyboard.press_key",
     };
     ActionStep::succeeded(label)
         .with_mechanism(StepMechanism::PhysicalSynthetic)

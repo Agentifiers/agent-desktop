@@ -7,7 +7,7 @@ use super::pointer_read::PointerRead;
 
 use super::sink_error::SinkError;
 
-use super::sink::X11Sink;
+use super::sink::InputSink;
 use crate::input::held_input::HeldInput;
 
 const FIRST_BUTTON_MASK: u16 = 0x0100;
@@ -34,7 +34,7 @@ pub(crate) fn leftover_keys(bits: &[u8; 32], pressed: &[u8]) -> Vec<u8> {
 }
 
 pub(crate) fn check(
-    sink: &mut dyn X11Sink,
+    sink: &mut dyn InputSink,
     touched: &HeldInput,
     deadline: agent_desktop_core::Deadline,
 ) -> Result<(), AdapterError> {
@@ -59,7 +59,7 @@ pub(crate) fn check(
 }
 
 fn observe_leftovers(
-    sink: &mut dyn X11Sink,
+    sink: &mut dyn InputSink,
     touched: &HeldInput,
     deadline: agent_desktop_core::Deadline,
 ) -> Result<HeldInput, AdapterError> {

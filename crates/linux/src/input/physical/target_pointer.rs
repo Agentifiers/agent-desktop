@@ -49,7 +49,8 @@ pub(crate) fn click_steps(
 ) -> Result<Vec<ActionStep>, AdapterError> {
     ensure_headed_click_policy(policy)?;
     ensure_budget(deadline)?;
-    if world.backend()? == Backend::Wayland {
+    let backend = world.backend()?;
+    if backend == Backend::Wayland {
         return Err(world.pointer_refusal("click"));
     }
     let at = aim_point(world, element, spec.verified.as_ref(), deadline)?;
@@ -58,7 +59,7 @@ pub(crate) fn click_steps(
     let plans = vec![world.plan_click(&map, at.clone(), &spec.button, spec.count)?];
     send_bursts(world, element, &at, Gesture::clicks(plans), deadline)?;
     Ok(vec![
-        ActionStep::succeeded("XTEST.click")
+        ActionStep::succeeded(pointer_label(&backend, "click"))
             .with_mechanism(StepMechanism::PhysicalSynthetic)
             .with_verified(false),
     ])
@@ -87,7 +88,8 @@ pub(crate) fn scroll_steps(
 ) -> Result<Vec<ActionStep>, AdapterError> {
     ensure_headed_click_policy(policy)?;
     ensure_budget(deadline)?;
-    if world.backend()? == Backend::Wayland {
+    let backend = world.backend()?;
+    if backend == Backend::Wayland {
         return Err(world.pointer_refusal("scroll"));
     }
     let at = aim_point(world, element, None, deadline)?;
@@ -96,10 +98,21 @@ pub(crate) fn scroll_steps(
         crate::input::mouse::wheel_plan::plan_wheel(&map, at.clone(), deltas.0, deltas.1, &[])?;
     send_bursts(world, element, &at, Gesture::unbounded(plans), deadline)?;
     Ok(vec![
-        ActionStep::succeeded("XTEST.scroll")
+        ActionStep::succeeded(pointer_label(&backend, "scroll"))
             .with_mechanism(StepMechanism::PhysicalSynthetic)
             .with_verified(false),
     ])
+}
+
+/// The step label of a physical pointer gesture: XTEST on X11, the wlroots
+/// virtual pointer on a wlroots compositor.
+pub(crate) fn pointer_label(backend: &Backend, gesture: &'static str) -> &'static str {
+    match (backend, gesture) {
+        (Backend::Wlroots, "scroll") => "VirtualPointer.scroll",
+        (Backend::Wlroots, _) => "VirtualPointer.click",
+        (_, "scroll") => "XTEST.scroll",
+        _ => "XTEST.click",
+    }
 }
 
 pub(crate) fn send_bursts(
@@ -240,7 +253,7 @@ pub(crate) fn click_shell(
     let point = super::shell_aim::aim(extents, &displays)?;
     let world = LiveWorld { bus, lease };
     match world.backend()? {
-        Backend::X11(_) => {
+        Backend::X11(_) | Backend::Wlroots => {
             click_steps(
                 &world,
                 node,

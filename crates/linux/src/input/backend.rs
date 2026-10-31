@@ -9,7 +9,21 @@ pub(crate) fn backend() -> Result<Backend, AdapterError> {
 }
 
 pub(crate) fn select(server: DisplayServer) -> Result<Backend, AdapterError> {
-    crate::system::display::route::resolve(server).map_err(|mut error| {
+    not_delivered(crate::system::display::route::resolve(server))
+}
+
+/// [`select`] with `wlroots` answering whether the Wayland compositor
+/// advertises the wlroots input protocols.
+#[cfg(test)]
+pub(crate) fn select_with(
+    server: DisplayServer,
+    wlroots: impl FnOnce() -> bool,
+) -> Result<Backend, AdapterError> {
+    not_delivered(crate::system::display::route::resolve_with(server, wlroots))
+}
+
+fn not_delivered(route: Result<Backend, AdapterError>) -> Result<Backend, AdapterError> {
+    route.map_err(|mut error| {
         error.details.get_or_insert_with(|| serde_json::json!({}))["physical_delivery_started"] =
             false.into();
         error.with_disposition(DeliverySemantics::not_delivered())

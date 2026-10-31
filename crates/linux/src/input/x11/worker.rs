@@ -7,7 +7,7 @@ use serde_json::json;
 
 use super::held_journal::HeldJournal;
 use super::progress::Progress;
-use super::sink::X11Sink;
+use super::sink::InputSink;
 use super::sink_error::SinkError;
 use super::verify;
 use crate::input::delivery::Delivery;
@@ -39,7 +39,7 @@ pub(crate) fn mark_started(error: AdapterError, started: bool) -> AdapterError {
 }
 
 pub(crate) fn work(
-    mut sink: impl X11Sink,
+    mut sink: impl InputSink,
     plans: Vec<Plan>,
     link: &Link,
     deadline: Deadline,
@@ -50,7 +50,7 @@ pub(crate) fn work(
 }
 
 fn execute(
-    sink: &mut dyn X11Sink,
+    sink: &mut dyn InputSink,
     plans: &[Plan],
     link: &Link,
     deadline: Deadline,
@@ -78,9 +78,11 @@ fn execute(
     }
     let touched = guard.touched().clone();
     let delivered = guard.delivered();
-    verify::check(guard.sink(), &touched, deadline).map_err(|error| {
-        ReleaseState::resumed(delivered, false).enrich_error(error, ABORT_SUGGESTION)
-    })?;
+    if guard.sink().reads_held_input() {
+        verify::check(guard.sink(), &touched, deadline).map_err(|error| {
+            ReleaseState::resumed(delivered, false).enrich_error(error, ABORT_SUGGESTION)
+        })?;
+    }
     Ok(Delivery {
         delivered_events: guard.delivered(),
     })
@@ -90,7 +92,7 @@ fn gate_passed(link: &Link) -> bool {
     link.reports.send(Report::Gate).is_ok() && link.proceed.recv().unwrap_or(false)
 }
 
-fn preflight(sink: &mut dyn X11Sink, plans: &[Plan]) -> Result<(), AdapterError> {
+fn preflight(sink: &mut dyn InputSink, plans: &[Plan]) -> Result<(), AdapterError> {
     if !plans
         .iter()
         .flat_map(|plan| &plan.steps)

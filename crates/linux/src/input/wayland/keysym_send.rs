@@ -125,6 +125,8 @@ fn drive(
             .start(deadline)
             .map_err(|error| with_progress(error, 0))?;
         gate().map_err(|error| with_progress(error, 0))?;
+    }
+    if !session.resumed() && session.leads_with_shift() {
         let shift = [
             KeysymStep {
                 keysym: KEYSYM_SHIFT_L,

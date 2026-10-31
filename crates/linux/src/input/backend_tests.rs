@@ -2,7 +2,7 @@ use std::path::Path;
 
 use agent_desktop_core::ErrorCode;
 
-use super::{Backend, select};
+use super::{Backend, select, select_with};
 use crate::system::display::display_cause::Cause;
 use crate::system::display::display_env::DisplayEnv;
 use crate::system::display::display_reach::Reach;
@@ -42,7 +42,7 @@ fn an_x11_answer_selects_the_x11_backend_with_the_display() {
 #[test]
 fn a_wayland_answer_selects_the_wayland_backend() {
     assert_eq!(
-        select(DisplayServer::Wayland).expect("backend"),
+        select_with(DisplayServer::Wayland, || false).expect("backend"),
         Backend::Wayland
     );
 }
@@ -113,7 +113,14 @@ fn a_live_wayland_socket_decides_before_a_set_display() {
     };
     let server = detect(&env(Some("wayland-0"), Some(":1")), &probe);
 
-    assert_eq!(select(server).expect("backend"), Backend::Wayland);
+    assert_eq!(
+        select_with(server.clone(), || false).expect("backend"),
+        Backend::Wayland
+    );
+    assert_eq!(
+        select_with(server, || true).expect("backend"),
+        Backend::Wlroots
+    );
 }
 
 #[test]

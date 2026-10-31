@@ -17,6 +17,7 @@ pub(crate) mod shell;
 pub(crate) mod signal;
 pub(crate) mod tray;
 pub(crate) mod window;
+pub(crate) mod wlroots;
 pub(crate) mod x11;
 
 pub(crate) use app::app_name::app_name as listed_app_name;

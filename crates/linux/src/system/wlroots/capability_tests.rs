@@ -1,0 +1,40 @@
+use super::*;
+
+fn with(interfaces: &[&str]) -> Capabilities {
+    Capabilities {
+        globals: interfaces
+            .iter()
+            .enumerate()
+            .map(|(name, interface)| Global {
+                name: name as u32 + 1,
+                interface: (*interface).to_owned(),
+                version: 1,
+            })
+            .collect(),
+    }
+}
+
+#[test]
+fn input_needs_a_seat_a_virtual_keyboard_and_a_virtual_pointer() {
+    assert!(with(&[SEAT, VIRTUAL_KEYBOARD, VIRTUAL_POINTER]).input());
+    assert!(!with(&[VIRTUAL_KEYBOARD, VIRTUAL_POINTER]).input());
+    assert!(!with(&[SEAT, VIRTUAL_POINTER]).input());
+    assert!(!with(&[SEAT, VIRTUAL_KEYBOARD]).input());
+}
+
+#[test]
+fn a_mutter_like_global_list_offers_no_wlroots_capability() {
+    let mutter = with(&[
+        "wl_seat",
+        "wl_output",
+        "xdg_wm_base",
+        "zxdg_output_manager_v1",
+    ]);
+    assert!(!mutter.input());
+}
+
+#[test]
+fn the_cache_key_names_both_the_runtime_dir_and_the_display() {
+    let key = session_key();
+    assert!(key.contains('\u{0}'));
+}

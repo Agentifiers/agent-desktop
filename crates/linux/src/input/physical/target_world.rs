@@ -136,6 +136,7 @@ impl PhysicalWorld for LiveWorld<'_> {
         match self.backend()? {
             Backend::X11(display) => crate::input::x11::session::live_keymap(&display, self.lease),
             Backend::Wayland => Err(self.pointer_refusal("keymap")),
+            Backend::Wlroots => Ok(crate::input::wlroots::plan_route::keymap()),
         }
     }
 

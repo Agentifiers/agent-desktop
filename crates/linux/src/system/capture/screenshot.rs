@@ -68,8 +68,10 @@ pub(crate) fn capture_through(
     portal: PortalCapture<'_>,
 ) -> Result<ImageBuffer, AdapterError> {
     match (route, target) {
-        (Route::Wayland, ScreenshotTarget::ExactWindow(_)) => Err(wayland_window()),
-        (Route::Wayland, target) => portal(&target, consent_deadline(deadline)?),
+        (Route::Wayland | Route::Wlroots, ScreenshotTarget::ExactWindow(_)) => {
+            Err(wayland_window())
+        }
+        (Route::Wayland | Route::Wlroots, target) => portal(&target, consent_deadline(deadline)?),
         (Route::X11(_), ScreenshotTarget::ExactWindow(window)) => {
             window::capture(env, &window, false, deadline)
         }
@@ -87,7 +89,7 @@ pub(crate) fn capture_frame_with(
     deadline: Deadline,
 ) -> Result<ImageBuffer, AdapterError> {
     match route {
-        Route::Wayland => Err(wayland_window()),
+        Route::Wayland | Route::Wlroots => Err(wayland_window()),
         Route::X11(_) => window::capture(env, window, true, deadline),
     }
     .map_err(not_delivered)
@@ -110,7 +112,7 @@ fn with_env<T>(
     };
     match route {
         Route::X11(display) => cursor_overlay::with_hidden(display, deadline, || run(&env)),
-        Route::Wayland => run(&env),
+        Route::Wayland | Route::Wlroots => run(&env),
     }
 }
 

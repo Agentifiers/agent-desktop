@@ -5,11 +5,11 @@ use super::held_input::HeldInput;
 use super::keyboard::keymap_edit::KeymapEdit;
 use super::release_state::ReleaseState;
 use super::x11::held_journal::HeldJournal;
-use super::x11::sink::X11Sink;
+use super::x11::sink::InputSink;
 use super::x11::sink_error::SinkError;
 
 pub(crate) struct ReleaseGuard<'a> {
-    sink: &'a mut dyn X11Sink,
+    sink: &'a mut dyn InputSink,
     state: ReleaseState,
     held: HeldInput,
     touched: HeldInput,
@@ -29,7 +29,7 @@ fn pointer_coordinate(value: i32) -> Result<i16, SinkError> {
 }
 
 impl<'a> ReleaseGuard<'a> {
-    pub(crate) fn new(sink: &'a mut dyn X11Sink) -> Self {
+    pub(crate) fn new(sink: &'a mut dyn InputSink) -> Self {
         Self {
             sink,
             state: ReleaseState::default(),
@@ -66,7 +66,7 @@ impl<'a> ReleaseGuard<'a> {
         &self.touched
     }
 
-    pub(crate) fn sink(&mut self) -> &mut dyn X11Sink {
+    pub(crate) fn sink(&mut self) -> &mut dyn InputSink {
         self.sink
     }
 

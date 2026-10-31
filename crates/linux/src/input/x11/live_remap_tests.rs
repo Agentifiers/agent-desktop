@@ -11,7 +11,7 @@ const MARKER: u32 = 0x1234;
 const WRITTEN_LEVELS: usize = 4;
 
 pub(crate) fn observed_keymap(display: &str) -> crate::input::keyboard::keymap::Keymap {
-    use super::{sink::X11Sink, xtest_sink::XtestSink};
+    use super::{sink::InputSink, xtest_sink::XtestSink};
     XtestSink::connect(display, deadline(8_000), Duration::from_secs(10))
         .unwrap()
         .keymap()
@@ -33,7 +33,7 @@ fn wait_for_keysyms(display: &str, code: u8, wanted: &[u32]) -> bool {
 #[test]
 #[ignore = "needs scripts/private-session.sh --wm"]
 fn live_text_after_own_pending_remap_reaches_the_editor_and_bad_recovery_refuses() {
-    use super::{held_journal::HeldJournal, sink::X11Sink, xtest_sink::XtestSink};
+    use super::{held_journal::HeldJournal, sink::InputSink, xtest_sink::XtestSink};
     use crate::input::{held_input::HeldInput, keyboard::text_plan::plan_text};
     use crate::system::x11::stacking::stacking_source::StackingSource;
     let display = private_display();

@@ -12,6 +12,7 @@ use super::mouse::drag_plan::plan_drag;
 use super::mouse::pointer_report::with_event_count;
 use super::plan::Plan;
 use super::wayland::keysym_send;
+use super::wlroots::{keysym_route, plan_route};
 use super::x11::{mouse_send, session};
 
 pub(crate) fn send_plans(
@@ -22,6 +23,7 @@ pub(crate) fn send_plans(
     match backend()? {
         Backend::X11(display) => session::run(&display, plans, gate, lease),
         Backend::Wayland => Err(keysym_send::pointer_refusal("pointer_and_chord_input")),
+        Backend::Wlroots => plan_route::run(plans, gate, lease),
     }
 }
 
@@ -33,6 +35,7 @@ pub(crate) fn send_keysyms(
     match backend()? {
         Backend::X11(_) => Err(AdapterError::not_supported("x11_keysym_input")),
         Backend::Wayland => keysym_send::send_chunks(chunks, gate, deadline),
+        Backend::Wlroots => keysym_route::send_chunks(chunks, gate, deadline),
     }
 }
 
@@ -57,6 +60,14 @@ pub(crate) fn mouse_event(
             ))
         }
         Backend::Wayland => Err(keysym_send::pointer_refusal("mouse_event")),
+        Backend::Wlroots => {
+            let plans = mouse_send::plans_with(&plan_route::keymap(), event)?;
+            let delivery = plan_route::run(plans, &mut || Ok(()), lease)?;
+            Ok(with_event_count(
+                OperationReport::pointer_dispatched(event, false),
+                &delivery,
+            ))
+        }
     }
 }
 
@@ -75,6 +86,14 @@ pub(crate) fn drag(
             ))
         }
         Backend::Wayland => Err(keysym_send::pointer_refusal("drag")),
+        Backend::Wlroots => {
+            let plan = plan_drag(params, deadline)?;
+            let delivery = plan_route::run(vec![plan], &mut || Ok(()), lease)?;
+            Ok(with_event_count(
+                OperationReport::drag_dispatched(params),
+                &delivery,
+            ))
+        }
     }
 }
 

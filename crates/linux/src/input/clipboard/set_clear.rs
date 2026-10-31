@@ -252,7 +252,7 @@ pub(crate) fn get_from(
 ) -> Result<Option<ClipboardContent>, AdapterError> {
     match routed(server)? {
         Route::X11(display) => read_x11(&display, format, deadline),
-        Route::Wayland => tools.read(format, deadline),
+        Route::Wayland | Route::Wlroots => tools.read(format, deadline),
     }
 }
 
@@ -264,7 +264,7 @@ pub(crate) fn set_from(
 ) -> Result<(), AdapterError> {
     match routed(server)? {
         Route::X11(display) => set_x11(&display, content, lease),
-        Route::Wayland => tools.set(content, lease),
+        Route::Wayland | Route::Wlroots => tools.set(content, lease),
     }
 }
 
@@ -275,7 +275,7 @@ pub(crate) fn clear_from(
 ) -> Result<(), AdapterError> {
     match routed(server)? {
         Route::X11(display) => clear_x11(&display, lease),
-        Route::Wayland => tools.clear(lease),
+        Route::Wayland | Route::Wlroots => tools.clear(lease),
     }
 }
 
