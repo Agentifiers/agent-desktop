@@ -21,7 +21,7 @@ use crate::system::{
     process::process_state,
     shell,
     signal::signal_capture,
-    window::window_op,
+    window::{window_op, window_toplevel_op},
 };
 
 const SURFACE_PROBE_MS: u64 = 3_000;
@@ -116,6 +116,9 @@ impl SystemOps for LinuxAdapter {
         op: WindowOp,
         lease: &InteractionLease,
     ) -> Result<OperationReport, AdapterError> {
+        if crate::system::display::route::toplevel_control() {
+            return window_toplevel_op::window_op(win, op, lease);
+        }
         window_op::window_op(self.bus(), win, op, lease)
     }
 

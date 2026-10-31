@@ -80,6 +80,27 @@ pub(super) fn windowless(request: &Request<'_>) -> AdapterError {
     .with_details(json!({ "app": request.name, "pid": request.pid }))
 }
 
+/// Several compositor toplevels match one window of the process by title
+/// and application, and the compositor names no process, so no close
+/// request is sent to any of them.
+pub(super) fn ambiguous(request: &Request<'_>, count: usize) -> AdapterError {
+    AdapterError::ambiguous_target(format!(
+        "{count} compositor windows match a window of process {} and cannot be told apart, so none was asked to close",
+        request.pid
+    ))
+    .with_suggestion(
+        "Give the windows different titles, close the window yourself, or use --force to end the process",
+    )
+    .with_details(json!({
+        "cause": "ambiguous_window",
+        "app": request.name,
+        "pid": request.pid,
+        "candidates": count,
+        "physical_delivery_started": false,
+    }))
+    .with_disposition(DeliverySemantics::not_delivered())
+}
+
 pub(super) fn send_failed(request: &Request<'_>, error: ControlError) -> AdapterError {
     refused(
         ErrorCode::ActionFailed,

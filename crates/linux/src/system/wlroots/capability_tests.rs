@@ -33,12 +33,19 @@ fn a_mutter_like_global_list_offers_no_wlroots_capability() {
     assert!(!mutter.input());
     assert!(!mutter.screencopy());
     assert!(!mutter.toplevel_capture());
+    assert!(!mutter.toplevel_control());
 }
 
 #[test]
 fn toplevel_capture_needs_the_list_the_source_and_the_copy_manager() {
     assert!(with(&[TOPLEVEL_LIST, IMAGE_COPY_CAPTURE, TOPLEVEL_CAPTURE_SOURCE]).toplevel_capture());
     assert!(!with(&[TOPLEVEL_LIST, IMAGE_COPY_CAPTURE]).toplevel_capture());
+}
+
+#[test]
+fn toplevel_control_needs_the_manager_and_a_seat_to_activate_with() {
+    assert!(with(&[FOREIGN_TOPLEVEL, SEAT]).toplevel_control());
+    assert!(!with(&[FOREIGN_TOPLEVEL]).toplevel_control());
 }
 
 #[test]

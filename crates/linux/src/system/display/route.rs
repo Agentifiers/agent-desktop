@@ -42,6 +42,22 @@ pub(crate) fn current() -> Result<Route, AdapterError> {
     resolve(session_server())
 }
 
+/// Whether window control goes through the wlroots foreign-toplevel
+/// protocol: the session takes the wlroots route and its compositor lets a
+/// client list, activate and close toplevels. Every other session keeps its
+/// own window control.
+pub(crate) fn toplevel_control() -> bool {
+    toplevel_control_with(current().ok().as_ref(), || {
+        crate::system::wlroots::capability::current().is_some_and(|found| found.toplevel_control())
+    })
+}
+
+/// As [`toplevel_control`] for a resolved `route`, with `control` answering
+/// whether the compositor advertises toplevel control.
+pub(crate) fn toplevel_control_with(route: Option<&Route>, control: impl FnOnce() -> bool) -> bool {
+    route == Some(&Route::Wlroots) && control()
+}
+
 #[cfg(test)]
 #[path = "route_tests.rs"]
 mod tests;

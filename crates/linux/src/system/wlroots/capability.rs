@@ -14,6 +14,7 @@ pub(crate) const VIRTUAL_KEYBOARD: &str = "zwp_virtual_keyboard_manager_v1";
 pub(crate) const VIRTUAL_POINTER: &str = "zwlr_virtual_pointer_manager_v1";
 pub(crate) const SEAT: &str = "wl_seat";
 pub(crate) const SCREENCOPY: &str = "zwlr_screencopy_manager_v1";
+pub(crate) const FOREIGN_TOPLEVEL: &str = "zwlr_foreign_toplevel_manager_v1";
 pub(crate) const TOPLEVEL_LIST: &str = "ext_foreign_toplevel_list_v1";
 pub(crate) const IMAGE_COPY_CAPTURE: &str = "ext_image_copy_capture_manager_v1";
 pub(crate) const TOPLEVEL_CAPTURE_SOURCE: &str =
@@ -48,6 +49,12 @@ impl Capabilities {
     /// Whether one toplevel can be captured on its own.
     pub(crate) fn toplevel_capture(&self) -> bool {
         self.has(TOPLEVEL_LIST) && self.has(IMAGE_COPY_CAPTURE) && self.has(TOPLEVEL_CAPTURE_SOURCE)
+    }
+
+    /// Whether toplevels can be listed, activated, closed and their states
+    /// changed.
+    pub(crate) fn toplevel_control(&self) -> bool {
+        self.has(FOREIGN_TOPLEVEL) && self.has(SEAT)
     }
 }
 

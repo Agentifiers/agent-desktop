@@ -6,6 +6,7 @@ pub(crate) mod native_group;
 #[cfg(test)]
 pub(super) mod stopped_live_tests;
 pub(super) mod stopped_windows;
+mod toplevel_annotate;
 pub(super) mod window_client;
 pub(crate) mod window_filter;
 pub(crate) mod window_id;
@@ -19,3 +20,4 @@ pub(super) mod window_order;
 pub(crate) mod window_position;
 pub(super) mod window_report;
 pub(super) mod window_resolve;
+pub(super) mod window_toplevel_op;

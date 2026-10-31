@@ -67,3 +67,20 @@ fn no_configured_display_names_both_variables() {
     assert!(suggestion.contains("DISPLAY"), "{suggestion}");
     assert!(suggestion.contains("WAYLAND_DISPLAY"), "{suggestion}");
 }
+
+#[test]
+fn only_the_wlroots_route_with_toplevel_control_takes_the_toplevel_path() {
+    assert!(toplevel_control_with(Some(&Route::Wlroots), || true));
+    assert!(!toplevel_control_with(Some(&Route::Wlroots), || false));
+}
+
+#[test]
+fn mutter_and_x11_keep_their_window_control_without_asking_the_compositor() {
+    let never = || panic!("a non-wlroots route must not probe for toplevel control");
+    assert!(!toplevel_control_with(Some(&Route::Wayland), never));
+    assert!(!toplevel_control_with(
+        Some(&Route::X11(":0".into())),
+        never
+    ));
+    assert!(!toplevel_control_with(None, never));
+}

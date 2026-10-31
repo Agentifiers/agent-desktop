@@ -14,9 +14,11 @@ use crate::system::x11::stacking::stacking_read::StackingRead;
 use crate::system::{SharedBus, shell, window::window_id};
 
 use super::focus_cause::{Cause, lift_refusal, modal_refusal, refusal};
+use super::focus_toplevel_world::ToplevelLiveWorld;
 use super::focus_world;
 use super::restore_minimized::Lifted;
 use crate::system::window::window_client::{ClientWorld, client_of};
+use crate::system::wlroots::foreign_toplevel::ForeignToplevels;
 use crate::system::x11::window::desktop_placement::DesktopPlacement;
 
 const FIRST_LOOK: Duration = Duration::from_millis(100);
@@ -24,7 +26,7 @@ const FIRST_LOOK: Duration = Duration::from_millis(100);
 /// How long a frame gets to report itself active once the window manager
 /// already names it. Chromium and Electron report it after their own focus
 /// event, which took 1.8 s on an idle box and more on a loaded one.
-const FRAME_REPORT_GRACE: Duration = Duration::from_millis(6_000);
+pub(super) const FRAME_REPORT_GRACE: Duration = Duration::from_millis(6_000);
 
 /// Which display server the session uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,7 +65,13 @@ pub(in crate::system) trait FocusWorld: ClientWorld {
 }
 
 fn check_process(world: &impl FocusWorld, win: &WindowInfo) -> Result<(), AdapterError> {
-    match world.lookup(win.pid.get()) {
+    check_owner(world.lookup(win.pid.get()), win)
+}
+
+/// Refuses a window whose process exited or is another instance than the
+/// one the window was listed with.
+pub(super) fn check_owner(lookup: Lookup, win: &WindowInfo) -> Result<(), AdapterError> {
+    match lookup {
         Lookup::Found(facts) if win.process_instance.as_deref() != Some(&facts.instance) => Err(
             AdapterError::stale_ref_because("The window belongs to a different process instance"),
         ),
@@ -310,6 +318,14 @@ pub(crate) fn focus_window(
     crate::system::display::display_server::require(deadline)
         .map_err(|error| error.with_disposition(DeliverySemantics::not_delivered()))?;
     let world = focus_world::LiveWorld::new(bus, win, deadline)?;
+    if crate::system::display::route::toplevel_control() {
+        let live = ToplevelLiveWorld {
+            frame: &world,
+            keyboard: std::cell::RefCell::new(None),
+        };
+        let open = || ForeignToplevels::open(deadline);
+        return super::focus_wlroots::run(&live, open, win, deadline);
+    }
     run(&world, win, deadline)
 }
 

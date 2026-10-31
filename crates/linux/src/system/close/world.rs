@@ -38,6 +38,12 @@ pub(super) trait World {
     fn signal(&self, signal: Signal) -> Result<Sent, AdapterError>;
     fn timeout_error(&self) -> AdapterError;
     fn on_wayland(&self) -> bool;
+    /// How many windows the last read of `toplevels` could not tell apart
+    /// from one of the process's own, when it met such a tie. Only a
+    /// compositor whose toplevels name no process meets one.
+    fn ambiguous(&self) -> Option<usize> {
+        None
+    }
 }
 
 pub(super) struct Live<'a> {

@@ -95,6 +95,7 @@ pub(crate) fn list_windows(
         &state,
         desktops.finish(deadline).flatten().as_ref(),
     );
+    super::toplevel_annotate::from_compositor(&mut pass.windows, deadline);
     let mut windows = pass.windows;
     if filter.focused_only {
         windows.retain(|window| window.info.state.is_focused);

@@ -100,6 +100,9 @@ fn request_close(world: &impl World, request: &Request<'_>) -> Result<bool, Adap
         Liveness::Stopped => return Err(AdapterError::app_unresponsive(request.name)),
         Liveness::Alive => {}
     }
+    if let Some(count) = world.ambiguous() {
+        return Err(refusal::ambiguous(request, count));
+    }
     if windows.is_empty() {
         let refused = if world.on_wayland() {
             refusal::wayland_session(request)
