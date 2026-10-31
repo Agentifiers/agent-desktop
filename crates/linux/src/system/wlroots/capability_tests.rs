@@ -49,6 +49,14 @@ fn toplevel_control_needs_the_manager_and_a_seat_to_activate_with() {
 }
 
 #[test]
+fn the_cursor_overlay_needs_a_layer_shell_surfaces_and_shared_memory() {
+    assert!(with(&[LAYER_SHELL, COMPOSITOR, SHM]).cursor_overlay());
+    assert!(!with(&[COMPOSITOR, SHM]).cursor_overlay());
+    assert!(!with(&[LAYER_SHELL, SHM]).cursor_overlay());
+    assert!(!with(&[LAYER_SHELL, COMPOSITOR]).cursor_overlay());
+}
+
+#[test]
 fn the_cache_key_names_both_the_runtime_dir_and_the_display() {
     let key = session_key();
     assert!(key.contains('\u{0}'));

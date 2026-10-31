@@ -143,8 +143,16 @@ fn copy_one(
     buffer.read(state.frame.y_inverted)
 }
 
-/// Copies every output `wanted` accepts, each with the output it shows.
+/// Copies every output `wanted` accepts, each with the output it shows,
+/// while this tool's cursor overlays are off the screen.
 pub(crate) fn capture_outputs(
+    wanted: impl Fn(&Output) -> bool,
+    deadline: Deadline,
+) -> Result<Vec<(Output, CapturedImage)>, AdapterError> {
+    crate::system::overlay::wlroots::concealed(deadline, || copy_outputs(wanted, deadline))
+}
+
+fn copy_outputs(
     wanted: impl Fn(&Output) -> bool,
     deadline: Deadline,
 ) -> Result<Vec<(Output, CapturedImage)>, AdapterError> {

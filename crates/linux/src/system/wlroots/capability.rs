@@ -19,6 +19,9 @@ pub(crate) const TOPLEVEL_LIST: &str = "ext_foreign_toplevel_list_v1";
 pub(crate) const IMAGE_COPY_CAPTURE: &str = "ext_image_copy_capture_manager_v1";
 pub(crate) const TOPLEVEL_CAPTURE_SOURCE: &str =
     "ext_foreign_toplevel_image_capture_source_manager_v1";
+pub(crate) const LAYER_SHELL: &str = "zwlr_layer_shell_v1";
+pub(crate) const COMPOSITOR: &str = "wl_compositor";
+pub(crate) const SHM: &str = "wl_shm";
 
 const PROBE_BUDGET_MS: u64 = 1_000;
 
@@ -55,6 +58,12 @@ impl Capabilities {
     /// changed.
     pub(crate) fn toplevel_control(&self) -> bool {
         self.has(FOREIGN_TOPLEVEL) && self.has(SEAT)
+    }
+
+    /// Whether a click-through marker can be drawn above every window: a
+    /// layer shell, surfaces and shared-memory buffers.
+    pub(crate) fn cursor_overlay(&self) -> bool {
+        self.has(LAYER_SHELL) && self.has(COMPOSITOR) && self.has(SHM)
     }
 }
 

@@ -1,5 +1,6 @@
-//! A `wl_shm` buffer the compositor copies pixels into. The pixels are read
-//! back from the memory file with positioned reads, so no mapping is held.
+//! A `wl_shm` buffer the compositor copies pixels into, or one the client
+//! draws for its own surface. The pixels move through the memory file with
+//! positioned reads and writes, so no mapping is held.
 
 use std::fs::File;
 use std::os::fd::AsFd;
@@ -110,6 +111,17 @@ impl ShmBuffer {
             layout,
             y_inverted,
         )
+    }
+
+    /// Fills the buffer from its first byte with `bytes`, laid out as its
+    /// spec says, for a buffer the client draws.
+    pub(crate) fn write(&self, bytes: &[u8]) -> Result<(), AdapterError> {
+        if bytes.len() != byte_length(self.spec)? {
+            return Err(refused("The drawn pixels do not fill the buffer"));
+        }
+        self.file
+            .write_all_at(bytes, 0)
+            .map_err(|error| AdapterError::internal(format!("filling the buffer: {error}")))
     }
 }
 
