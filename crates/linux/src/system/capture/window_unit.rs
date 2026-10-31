@@ -3,7 +3,7 @@ use agent_desktop_core::Rect;
 use crate::tree::Extents;
 
 const FRAME_TOLERANCE: f64 = 0.01;
-const CLIENT_TOLERANCE: f64 = 0.02;
+pub(crate) const CLIENT_TOLERANCE: f64 = 0.02;
 
 /// Which drawable of a window a capture takes: the window manager's frame, the
 /// client alone, or neither because no size agrees with the reported bounds.
@@ -14,7 +14,8 @@ pub(crate) enum Unit {
     Unproven,
 }
 
-fn agrees(size: Extents, bounds: Rect, tolerance: f64) -> bool {
+/// Whether `size` is the size of `bounds` within `tolerance` on each axis.
+pub(crate) fn agrees(size: Extents, bounds: Rect, tolerance: f64) -> bool {
     if bounds.width <= 0.0 || bounds.height <= 0.0 {
         return false;
     }

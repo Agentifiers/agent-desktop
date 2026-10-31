@@ -186,6 +186,10 @@ impl WindowLookup for FixedLookup {
     fn displays(&self, deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError> {
         crate::system::list_displays(deadline)
     }
+
+    fn frame_size(&self, _: &WindowInfo, _: Deadline) -> Option<(i32, i32)> {
+        None
+    }
 }
 
 pub(super) fn x_window_id(title: &str) -> u32 {

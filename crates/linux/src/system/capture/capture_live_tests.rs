@@ -86,7 +86,7 @@ fn grab_live_the_capture_permission_follows_the_session() {
     let _display = assert_private_display();
     let deadline = Deadline::after(10_000).expect("a deadline builds");
     let x11 = detect(&DisplayEnv::from_process(), &SocketProbe);
-    let reachable = capture_availability(resolve(x11), &DisplayGrabber, deadline);
+    let reachable = capture_availability(resolve(x11), &DisplayGrabber, &|| false, deadline);
     assert!(matches!(reachable, CaptureAvailability::Reachable));
 
     let runtime = std::env::var("XDG_RUNTIME_DIR").expect("a runtime directory");
@@ -96,7 +96,7 @@ fn grab_live_the_capture_permission_follows_the_session() {
     let mut env = DisplayEnv::from_process();
     env.wayland = Some(socket);
     let wayland = detect(&env, &SocketProbe);
-    let unknown = capture_availability(resolve(wayland), &DisplayGrabber, deadline);
+    let unknown = capture_availability(resolve(wayland), &DisplayGrabber, &|| false, deadline);
     assert!(matches!(unknown, CaptureAvailability::Unknown));
 }
 

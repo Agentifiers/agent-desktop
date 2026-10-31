@@ -192,16 +192,13 @@ fn recheck(
     }
 }
 
-/// Captures one window's own drawable. The window is resolved strictly and
-/// mapped to its X11 id before the grab and both are proven again after it, so
-/// the pixels belong to the window that was asked for. `strict_unit` refuses a
-/// window whose drawables match no reported bounds.
-pub(crate) fn capture(
+/// Refuses a window capture before any read: a window without a process
+/// instance token, or one whose process is stopped.
+pub(crate) fn admit(
     env: &CaptureEnv,
     window: &WindowInfo,
-    strict_unit: bool,
     deadline: Deadline,
-) -> Result<ImageBuffer, AdapterError> {
+) -> Result<(), AdapterError> {
     if window.process_instance.is_none() {
         return Err(refusal(
             ErrorCode::InvalidArgs,
@@ -213,6 +210,20 @@ pub(crate) fn capture(
     if (env.stopped)(window.pid.get()) {
         return Err(stopped(window));
     }
+    Ok(())
+}
+
+/// Captures one window's own drawable. The window is resolved strictly and
+/// mapped to its X11 id before the grab and both are proven again after it, so
+/// the pixels belong to the window that was asked for. `strict_unit` refuses a
+/// window whose drawables match no reported bounds.
+pub(crate) fn capture(
+    env: &CaptureEnv,
+    window: &WindowInfo,
+    strict_unit: bool,
+    deadline: Deadline,
+) -> Result<ImageBuffer, AdapterError> {
+    admit(env, window, deadline)?;
     let resolved = env.lookup.resolve(window, deadline)?;
     let xid = match xid_or_error(env.lookup.xid(&resolved, deadline)) {
         Err(_) if (env.stopped)(window.pid.get()) => return Err(stopped(window)),

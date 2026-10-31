@@ -4,6 +4,9 @@ pub(crate) mod display;
 pub(crate) mod fullscreen_route;
 pub(crate) mod pixels;
 pub(crate) mod png_encode;
+pub(crate) mod toplevel_route;
+pub(crate) mod toplevel_source;
+pub(crate) mod wayland_capture;
 pub(crate) mod wayland_crop;
 pub(crate) mod wayland_file;
 pub(crate) mod wayland_portal;
@@ -14,6 +17,9 @@ pub(crate) mod window_context;
 pub(crate) mod window_obstruction;
 pub(crate) mod window_unit;
 pub(crate) mod window_xid;
+pub(crate) mod wlroots_display;
+pub(crate) mod wlroots_unit;
+pub(crate) mod wlroots_window;
 
 #[cfg(test)]
 mod capture_live_support;
@@ -29,5 +35,7 @@ mod wayland_portal_live_process;
 mod wayland_portal_live_support;
 #[cfg(test)]
 mod wayland_portal_live_tests;
+#[cfg(test)]
+mod wlroots_live_tests;
 
 pub(super) mod screenshot;

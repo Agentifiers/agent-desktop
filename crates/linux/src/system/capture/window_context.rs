@@ -6,11 +6,13 @@ use crate::system::x11::capture::grab::Raw;
 use crate::system::x11::capture::grab_error::GrabError;
 
 /// The listings a capture re-reads around a grab: the strictly resolved
-/// window, the X11 window it maps to, and the displays.
+/// window, the X11 window it maps to, the displays, and the size the window's
+/// accessibility frame reports in its own coordinates.
 pub(crate) trait WindowLookup {
     fn resolve(&self, window: &WindowInfo, deadline: Deadline) -> Result<WindowInfo, AdapterError>;
     fn xid(&self, window: &WindowInfo, deadline: Deadline) -> XidOutcome;
     fn displays(&self, deadline: Deadline) -> Result<Vec<DisplayInfo>, AdapterError>;
+    fn frame_size(&self, window: &WindowInfo, deadline: Deadline) -> Option<(i32, i32)>;
 }
 
 pub(crate) type Decode = fn(&Raw) -> Result<Vec<u8>, AdapterError>;

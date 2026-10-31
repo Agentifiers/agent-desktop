@@ -104,14 +104,42 @@ fn grabber_answering(answer: Result<bool, fn() -> GrabError>) -> FakeGrabber {
     rig.grabber
 }
 
+fn never_asked() -> bool {
+    panic!("only a wlroots route asks whether the compositor offers screencopy")
+}
+
+fn screen_recording_with(
+    route: Result<Route, AdapterError>,
+    grabber: &FakeGrabber,
+    screencopy: &dyn Fn() -> bool,
+) -> PermissionState {
+    let capture = capture_availability(route, grabber, screencopy, deadline());
+    report_from_probe(Ok(()), capture)
+        .expect("a granted probe is a report")
+        .screen_recording
+}
+
 fn screen_recording_of(
     route: Result<Route, AdapterError>,
     grabber: &FakeGrabber,
 ) -> PermissionState {
-    let capture = capture_availability(route, grabber, deadline());
-    report_from_probe(Ok(()), capture)
-        .expect("a granted probe is a report")
-        .screen_recording
+    screen_recording_with(route, grabber, &never_asked)
+}
+
+#[test]
+fn a_wlroots_compositor_with_screencopy_needs_no_screen_recording_permission() {
+    let grabber = grabber_answering(Ok(true));
+    let state = screen_recording_with(Ok(Route::Wlroots), &grabber, &|| true);
+    assert_eq!(state, PermissionState::NotRequired);
+    assert_eq!(grabber.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+}
+
+#[test]
+fn a_wlroots_compositor_without_screencopy_is_unknown() {
+    let grabber = grabber_answering(Ok(true));
+    let state = screen_recording_with(Ok(Route::Wlroots), &grabber, &|| false);
+    assert_eq!(state, PermissionState::Unknown);
+    assert_eq!(grabber.calls.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
 
 #[test]
@@ -162,7 +190,12 @@ fn a_failed_capture_probe_never_produces_denied() {
 #[test]
 fn an_unanswering_display_leaves_the_accessibility_result_as_the_bus_probe_found_it() {
     let grabber = grabber_answering(Err(|| GrabError::Timeout));
-    let capture = capture_availability(Ok(Route::X11(":0".into())), &grabber, deadline());
+    let capture = capture_availability(
+        Ok(Route::X11(":0".into())),
+        &grabber,
+        &never_asked,
+        deadline(),
+    );
     let unreachable = AdapterError::new(ErrorCode::PlatformNotSupported, "bus gone");
     let report = report_from_probe(Err(unreachable), capture).expect("a denied report");
     assert!(report.accessibility_denied());

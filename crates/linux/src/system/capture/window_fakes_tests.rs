@@ -324,6 +324,7 @@ impl Rig {
                 resolved: Seq::of(vec![Some(window_info(frame_bounds()))]),
                 xids: Seq::of(vec![XidOutcome::One(CLIENT)]),
                 displays: Seq::of(vec![Some(vec![display_at("A", 0.0, 1920.0, 1.0, true)])]),
+                frame_sizes: Seq::of(vec![None]),
                 calls: AtomicUsize::new(0),
             },
             stopped: never_stopped,

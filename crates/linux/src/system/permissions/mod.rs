@@ -17,6 +17,7 @@ pub(crate) fn report(
     let capture = capture_availability(
         current(),
         &DisplayGrabber,
+        &offers_screencopy,
         deadline.capped(CAPTURE_PROBE_SLICE),
     );
     let probed = bus
@@ -35,26 +36,35 @@ pub(crate) fn accessibility_answers(bus: &SharedBus, deadline: Deadline) -> bool
         .is_ok()
 }
 
-/// Whether the session's capture route answered. Only an X11 display that
-/// answers inside the deadline is `Reachable`; every other case, Wayland
-/// included, is `Unknown` because nothing was learned about the route.
+/// Whether the session's capture route answered. An X11 display that answers
+/// inside the deadline and a wlroots compositor that offers screencopy are
+/// `Reachable`: both capture with no person's consent. Every other case,
+/// Mutter and the portal included, is `Unknown` because nothing was learned
+/// about the route.
 pub(crate) enum CaptureAvailability {
     Reachable,
     Unknown,
 }
 
-/// Probes the X11 display with one bounded request. A Wayland session, a
-/// missing display and a display that does not answer are all `Unknown`; no
-/// portal is called.
+fn offers_screencopy() -> bool {
+    crate::system::wlroots::capability::current().is_some_and(|offered| offered.screencopy())
+}
+
+/// Probes the X11 display with one bounded request, or asks a wlroots
+/// compositor whether it offers screencopy. A Mutter session, a missing
+/// display and a display that does not answer are all `Unknown`; no portal
+/// is called.
 pub(crate) fn capture_availability(
     route: Result<Route, AdapterError>,
     grabber: &dyn Grabber,
+    screencopy: &dyn Fn() -> bool,
     deadline: Deadline,
 ) -> CaptureAvailability {
     match route {
         Ok(Route::X11(_)) if grabber.compositing(deadline).is_ok() => {
             CaptureAvailability::Reachable
         }
+        Ok(Route::Wlroots) if screencopy() => CaptureAvailability::Reachable,
         _ => CaptureAvailability::Unknown,
     }
 }

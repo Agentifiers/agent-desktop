@@ -8,7 +8,7 @@ use crate::system::capture::capture_env::CaptureEnv;
 use crate::system::x11::capture::grab_rect::GrabRect;
 use crate::tree::Extents;
 
-fn invalid(message: String, count: usize) -> AdapterError {
+pub(crate) fn invalid(message: String, count: usize) -> AdapterError {
     AdapterError::new(ErrorCode::InvalidArgs, message)
         .with_suggestion("Run 'list-displays' to see the displays that exist now")
         .with_details(serde_json::json!({ "display_count": count }))

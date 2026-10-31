@@ -13,6 +13,11 @@ use super::link::{CoreHandler, Global, GlobalSink, Link, SyncFlag};
 pub(crate) const VIRTUAL_KEYBOARD: &str = "zwp_virtual_keyboard_manager_v1";
 pub(crate) const VIRTUAL_POINTER: &str = "zwlr_virtual_pointer_manager_v1";
 pub(crate) const SEAT: &str = "wl_seat";
+pub(crate) const SCREENCOPY: &str = "zwlr_screencopy_manager_v1";
+pub(crate) const TOPLEVEL_LIST: &str = "ext_foreign_toplevel_list_v1";
+pub(crate) const IMAGE_COPY_CAPTURE: &str = "ext_image_copy_capture_manager_v1";
+pub(crate) const TOPLEVEL_CAPTURE_SOURCE: &str =
+    "ext_foreign_toplevel_image_capture_source_manager_v1";
 
 const PROBE_BUDGET_MS: u64 = 1_000;
 
@@ -33,6 +38,16 @@ impl Capabilities {
     /// virtual keyboard and a virtual pointer.
     pub(crate) fn input(&self) -> bool {
         self.has(SEAT) && self.has(VIRTUAL_KEYBOARD) && self.has(VIRTUAL_POINTER)
+    }
+
+    /// Whether whole outputs can be copied without a portal.
+    pub(crate) fn screencopy(&self) -> bool {
+        self.has(SCREENCOPY)
+    }
+
+    /// Whether one toplevel can be captured on its own.
+    pub(crate) fn toplevel_capture(&self) -> bool {
+        self.has(TOPLEVEL_LIST) && self.has(IMAGE_COPY_CAPTURE) && self.has(TOPLEVEL_CAPTURE_SOURCE)
     }
 }
 

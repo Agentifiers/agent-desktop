@@ -63,6 +63,7 @@ pub(crate) struct FakeLookup {
     pub(crate) resolved: Seq<Option<WindowInfo>>,
     pub(crate) xids: Seq<XidOutcome>,
     pub(crate) displays: Seq<Option<Vec<DisplayInfo>>>,
+    pub(crate) frame_sizes: Seq<Option<(i32, i32)>>,
     pub(crate) calls: AtomicUsize,
 }
 
@@ -88,5 +89,10 @@ impl WindowLookup for FakeLookup {
         self.displays
             .next()
             .ok_or_else(|| AdapterError::internal("displays unavailable"))
+    }
+
+    fn frame_size(&self, _window: &WindowInfo, _deadline: Deadline) -> Option<(i32, i32)> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.frame_sizes.next()
     }
 }
