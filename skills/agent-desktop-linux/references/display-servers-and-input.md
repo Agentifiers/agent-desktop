@@ -299,6 +299,12 @@ refuse there and ref pointer aiming works only on an active maximized or
 fullscreen window.
 
 Each pointer delivery creates a virtual pointer and destroys it afterwards.
+On a seat with no other pointer device, labwc adds the pointer capability anew
+for each delivery, and a client binds its new pointer only once it has read
+that change. A press sent before then reaches no pointer of the client and is
+lost while its release arrives, so the delivery waits 100 ms after creating
+its pointer before the first button or wheel notch.
+
 Xwayland (24.1.14, under both labwc versions) takes the first click sent to one
 of its windows; every later click to an Xwayland window is lost, the command
 still reports `delivered_unverified`, and Xwayland logs `pointer_handle_leave`

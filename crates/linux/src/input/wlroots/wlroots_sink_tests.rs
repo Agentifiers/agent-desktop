@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use agent_desktop_core::{Deadline, Modifier, MouseButton, Point};
 
 use super::super::fake_devices::FakeDevices;
@@ -121,4 +123,34 @@ fn a_keycode_outside_the_modifier_keymap_and_a_remap_are_refused() {
         .is_err()
     );
     assert!(sink.button(9, true).is_err());
+}
+
+#[test]
+fn the_first_button_waits_for_clients_to_bind_the_new_pointer() {
+    let devices = FakeDevices::default();
+    let started = Instant::now();
+    let mut sink = sink(&devices);
+    sink.move_to(300, 200).expect("move");
+    assert!(started.elapsed() < SEAT_SETTLE, "a motion does not wait");
+    sink.button(1, true).expect("press");
+    assert!(
+        started.elapsed() >= SEAT_SETTLE,
+        "the press went out too soon"
+    );
+    let pressed = Instant::now();
+    sink.button(1, false).expect("release");
+    assert!(
+        pressed.elapsed() < SEAT_SETTLE,
+        "only the first button waits"
+    );
+}
+
+#[test]
+fn the_seat_settle_never_runs_past_the_delivery_deadline() {
+    let devices = FakeDevices::default();
+    let started = Instant::now();
+    let mut sink =
+        WlrootsSink::new(devices.clone(), Deadline::after(20).expect("deadline")).expect("sink");
+    sink.button(1, true).expect("press");
+    assert!(started.elapsed() < SEAT_SETTLE);
 }

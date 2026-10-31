@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use agent_desktop_core::{AdapterError, Deadline};
 
 use super::key_device::KeyDevice;
@@ -18,6 +20,15 @@ const BTN_RIGHT: u32 = 0x111;
 const BTN_MIDDLE: u32 = 0x112;
 const EVDEV_OFFSET: u8 = 8;
 
+/// How long a delivery's first button or wheel notch waits after its virtual
+/// pointer was created. A compositor such as labwc advertises the pointer
+/// capability only while some pointer device exists, so on a seat with no
+/// other pointer every delivery adds the capability again and each client
+/// binds a new `wl_pointer` only once it has read that change. A press the
+/// compositor handles before then reaches no pointer of the client and is
+/// lost, while the release that follows arrives, so the click never happens.
+pub(crate) const SEAT_SETTLE: Duration = Duration::from_millis(100);
+
 /// Plan steps on a wlroots compositor: keys on a virtual keyboard whose
 /// keymap holds the four modifiers, buttons, wheel notches and absolute
 /// motion on a virtual pointer. Plans address keys by the X keycodes of
@@ -27,6 +38,7 @@ pub(crate) struct WlrootsSink<D> {
     layout: KeymapLayout,
     held: Vec<u32>,
     deadline: Deadline,
+    pointer_born: Option<Instant>,
 }
 
 fn request(error: AdapterError) -> SinkError {
@@ -47,11 +59,25 @@ impl<D: KeyDevice + PointerDevice> WlrootsSink<D> {
             layout,
             held: Vec::new(),
             deadline,
+            pointer_born: Some(Instant::now()),
         })
     }
 
     fn sync(&mut self) -> Result<(), SinkError> {
         PointerDevice::sync(&mut self.device, self.deadline).map_err(request)
+    }
+
+    /// Waits, once, until clients have had [`SEAT_SETTLE`] to bind the new
+    /// pointer, never past the delivery's deadline.
+    fn settle_seat(&mut self) {
+        if let Some(born) = self.pointer_born.take() {
+            let wait = SEAT_SETTLE
+                .saturating_sub(born.elapsed())
+                .min(self.deadline.remaining());
+            if !wait.is_zero() {
+                std::thread::sleep(wait);
+            }
+        }
     }
 }
 
@@ -94,6 +120,7 @@ impl<D: KeyDevice + PointerDevice> InputSink for WlrootsSink<D> {
                     BUTTON_WHEEL_LEFT => wheel(false, -1),
                     _ => wheel(false, 1),
                 };
+                self.settle_seat();
                 return self.device.wheel(vertical, steps).map_err(request);
             }
             other => {
@@ -102,6 +129,7 @@ impl<D: KeyDevice + PointerDevice> InputSink for WlrootsSink<D> {
                 )));
             }
         };
+        self.settle_seat();
         self.device.button(pressed, down).map_err(request)
     }
 
