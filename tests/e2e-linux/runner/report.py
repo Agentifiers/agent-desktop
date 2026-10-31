@@ -11,8 +11,9 @@ UNIMPLEMENTED = "unimplemented"
 FAIL = "fail"
 ERROR = "error"
 TIER_UNAVAILABLE = "tier-unavailable"
+NOT_APPLICABLE = "not-applicable"
 
-_NONFAILING = {PASS, REFUSED}
+_NONFAILING = {PASS, REFUSED, NOT_APPLICABLE}
 
 
 @dataclass
@@ -36,8 +37,8 @@ def count_failures(outcomes: list[LegOutcome]) -> int:
     return sum(1 for outcome in outcomes if outcome.outcome not in _NONFAILING)
 
 
-def render(outcomes: list[LegOutcome]) -> str:
-    lines = []
+def render(outcomes: list[LegOutcome], notes: tuple[str, ...] = ()) -> str:
+    lines = list(notes)
     tiers = sorted({outcome.tier for outcome in outcomes})
     for tier in tiers:
         lines.append(f"tier {tier}")

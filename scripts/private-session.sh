@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Run a command inside a private desktop session: its own 0700 runtime dir, session bus,
 # Xvfb display and (with --wm) openbox. Nothing here touches the owner's desktop or the live
-# AT-SPI bus.
-# Usage: scripts/private-session.sh [--wm] [--screen WxHxD] -- command [args...]
+# AT-SPI bus. --no-x starts no Xvfb, for a compositor that brings its own Xwayland.
+# Usage: scripts/private-session.sh [--wm | --no-x] [--screen WxHxD] -- command [args...]
 #
 # The bus starts before Xvfb exists, so bus-activated apps (gnome-terminal-server, nautilus)
 # would otherwise inherit whatever display the caller carried and map their windows on the
@@ -13,17 +13,19 @@ set -euo pipefail
 umask 077
 
 wm=0
+xvfb=1
 screen=1280x800x24
 while [ $# -gt 0 ]; do
   case "$1" in
     --wm) wm=1; shift ;;
+    --no-x) xvfb=0; shift ;;
     --screen) screen=${2:?--screen needs WxHxD}; shift 2 ;;
     --) shift; break ;;
     *) break ;;
   esac
 done
-if [ $# -eq 0 ]; then
-  echo "usage: private-session.sh [--wm] [--screen WxHxD] -- command [args...]" >&2
+if [ $# -eq 0 ] || { [ "$wm" = 1 ] && [ "$xvfb" = 0 ]; }; then
+  echo "usage: private-session.sh [--wm | --no-x] [--screen WxHxD] -- command [args...]" >&2
   exit 2
 fi
 
@@ -86,7 +88,7 @@ cleanup() {
     sleep 0.1
   done
   for mount in "$rt/doc" "$rt/gvfs"; do
-    fusermount -u "$mount" 2>/dev/null || true
+    fusermount -u "$mount" 2>/dev/null || fusermount3 -u "$mount" 2>/dev/null || true
   done
   case "$rt" in
     "$base"/rt.?*)
@@ -121,33 +123,37 @@ done
 
 # The display number is chosen from :100 up, never by Xvfb's own lowest-free search: a low number can
 # be the owner's live display or another session's, and the live tests refuse :0, :1 and :99.
-display_number=
-exec 9> "$base/display.lock"
-flock 9
-for candidate in $(seq 100 149); do
-  [ -e "/tmp/.X11-unix/X$candidate" ] || [ -e "/tmp/.X$candidate-lock" ] && continue
-  Xvfb ":$candidate" -screen 0 "$screen" -nolisten tcp 9>&- 2> "$rt/xvfb.log" &
-  xvfb_pid=$!
-  for _ in $(seq 1 50); do
-    [ -S "/tmp/.X11-unix/X$candidate" ] && break
-    kill -0 "$xvfb_pid" 2>/dev/null || break
-    sleep 0.1
+activation=(XDG_RUNTIME_DIR XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME TMPDIR GSETTINGS_BACKEND
+  XDG_CURRENT_DESKTOP AGENT_DESKTOP_PRIVATE_SESSION AGENT_DESKTOP_HOME)
+if [ "$xvfb" = 1 ]; then
+  display_number=
+  exec 9> "$base/display.lock"
+  flock 9
+  for candidate in $(seq 100 149); do
+    [ -e "/tmp/.X11-unix/X$candidate" ] || [ -e "/tmp/.X$candidate-lock" ] && continue
+    Xvfb ":$candidate" -screen 0 "$screen" -nolisten tcp 9>&- 2> "$rt/xvfb.log" &
+    xvfb_pid=$!
+    for _ in $(seq 1 50); do
+      [ -S "/tmp/.X11-unix/X$candidate" ] && break
+      kill -0 "$xvfb_pid" 2>/dev/null || break
+      sleep 0.1
+    done
+    if [ -S "/tmp/.X11-unix/X$candidate" ] && kill -0 "$xvfb_pid" 2>/dev/null; then
+      pids+=("$xvfb_pid")
+      display_number=$candidate
+      echo "$candidate" > "$rt/displayfd"
+      break
+    fi
+    kill "$xvfb_pid" 2>/dev/null || true
   done
-  if [ -S "/tmp/.X11-unix/X$candidate" ] && kill -0 "$xvfb_pid" 2>/dev/null; then
-    pids+=("$xvfb_pid")
-    display_number=$candidate
-    echo "$candidate" > "$rt/displayfd"
-    break
-  fi
-  kill "$xvfb_pid" 2>/dev/null || true
-done
-flock -u 9
-exec 9>&-
-[ -n "$display_number" ] || { echo "private-session: Xvfb did not start" >&2; exit 1; }
-export DISPLAY=":$display_number"
+  flock -u 9
+  exec 9>&-
+  [ -n "$display_number" ] || { echo "private-session: Xvfb did not start" >&2; exit 1; }
+  export DISPLAY=":$display_number"
+  activation+=(DISPLAY)
+fi
 
-dbus-update-activation-environment DISPLAY XDG_RUNTIME_DIR XDG_CONFIG_HOME XDG_DATA_HOME \
-  XDG_CACHE_HOME TMPDIR GSETTINGS_BACKEND XDG_CURRENT_DESKTOP AGENT_DESKTOP_PRIVATE_SESSION AGENT_DESKTOP_HOME
+dbus-update-activation-environment "${activation[@]}"
 
 if [ "$wm" = 1 ]; then
   wm_root=${AGENT_DESKTOP_WM_ROOT:-/}

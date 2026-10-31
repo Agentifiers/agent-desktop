@@ -20,11 +20,16 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 SCRIPT_PRIVATE_SESSION = SCRIPTS_DIR / "private-session.sh"
 SCRIPT_MUTTER_SHELL = SCRIPTS_DIR / "private-mutter-shell.sh"
 SCRIPT_WAYLAND_SHELL = SCRIPTS_DIR / "private-wayland-shell.sh"
+SCRIPT_LABWC_SHELL = SCRIPTS_DIR / "private-labwc-shell.sh"
+LABWC_RC = HARNESS_ROOT / "runner" / "labwc-rc.xml"
+BROWSERS = ("chromium", "google-chrome", "google-chrome-stable")
+WAYLAND_TIERS = ("wayland", "wayland-labwc")
 
 _INNER_WRAPPERS = {
     "x11-openbox": (),
     "x11-mutter": ("SCRIPT_MUTTER_SHELL",),
     "wayland": ("SCRIPT_WAYLAND_SHELL",),
+    "wayland-labwc": ("SCRIPT_LABWC_SHELL",),
 }
 
 ENV_FILE_VAR = "AD_TIER_ENV_FILE"
@@ -69,9 +74,14 @@ def _tier_argv(name: str) -> list[str]:
     argv = ["bash", str(SCRIPT_PRIVATE_SESSION)]
     if name == "x11-openbox":
         argv.append("--wm")
+    if name == "wayland-labwc":
+        argv.append("--no-x")
     argv.append("--")
     for attr in _INNER_WRAPPERS[name]:
-        argv += [str(globals()[attr]), "--"]
+        argv.append(str(globals()[attr]))
+        if attr == "SCRIPT_LABWC_SHELL":
+            argv += ["--rc", str(LABWC_RC)]
+        argv.append("--")
     argv += ["bash", "-c", _PAYLOAD]
     return argv
 
@@ -213,10 +223,12 @@ def _build_tier(name: str, env_values: dict[str, str]) -> Tier:
     if name == "wayland":
         env.pop("DISPLAY", None)
         env.update(GDK_BACKEND="wayland", XDG_SESSION_TYPE="wayland")
+    if name == "wayland-labwc":
+        env["XDG_SESSION_TYPE"] = "wayland"
     return Tier(
         name=name,
         runtime_dir=runtime_dir,
-        display=None if name == "wayland" else env_values.get("DISPLAY") or None,
+        display=None if name in WAYLAND_TIERS else env_values.get("DISPLAY") or None,
         wayland_display=env_values.get("WAYLAND_DISPLAY") or None,
         bus_address=env_values["DBUS_SESSION_BUS_ADDRESS"],
         a11y_bus_address=env_values.get("AT_SPI_BUS_ADDRESS", ""),

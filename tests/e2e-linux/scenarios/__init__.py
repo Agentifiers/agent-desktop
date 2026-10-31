@@ -37,6 +37,9 @@ from scenarios import wayland_actions
 from scenarios import wayland_focus
 from scenarios import wayland_input
 from scenarios import zero_bounds
+from scenarios import labwc_input
+from scenarios import labwc_browser
+from scenarios import labwc_windows
 from scenarios import controlled_targets
 from scenarios import gaps_decisions
 from scenarios import error_contract
@@ -51,6 +54,9 @@ __all__ = [
     "events",
     "headed_actions",
     "identity",
+    "labwc_browser",
+    "labwc_input",
+    "labwc_windows",
     "launch",
     "lifecycle",
     "menus",

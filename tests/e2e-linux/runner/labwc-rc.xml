@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!-- Places each app the wayland-labwc legs drive at a fixed, non-overlapping origin, so a
+     leg can turn AT-SPI window-relative extents into output coordinates and compare
+     output pixels. Read by runner/labwc.py; keep every MoveTo inside the 1280x720 output. -->
+<labwc_config>
+  <windowRules>
+    <windowRule identifier="org.gnome.Calculator">
+      <action name="MoveTo" x="40" y="40"/>
+    </windowRule>
+    <windowRule identifier="org.gnome.TextEditor">
+      <action name="MoveTo" x="480" y="60"/>
+    </windowRule>
+  </windowRules>
+</labwc_config>

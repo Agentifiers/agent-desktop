@@ -23,10 +23,11 @@ Keep failed suites for diagnosis; the runner removes a successful suite. Use ano
 `runner/gate.py` is the authoritative list; a missing item exits 2 before any leg runs.
 
 - Python 3 with PyGObject (`import gi`).
-- Base tools: `Xvfb`, `dbus-daemon`, `dbus-update-activation-environment`, `gdbus`, `busctl`, `gsettings`, `setsid`, `xprop`, `xwininfo`, `xwd`, `fusermount`, `timeout`.
+- Base tools: `dbus-daemon`, `dbus-update-activation-environment`, `gdbus`, `busctl`, `gsettings`, `setsid`, `xprop`, `xwininfo`, `timeout`, and `fusermount` or `fusermount3`. The Xvfb tiers (`x11-openbox`, `x11-mutter`, `wayland`) also need `Xvfb` and `xwd`.
 - `x11-openbox`: `xdotool`, `wmctrl`, `xclip`, and the openbox binary at `$AGENT_DESKTOP_WM_ROOT/usr/bin/openbox` (`AGENT_DESKTOP_WM_ROOT` defaults to `/`).
 - `x11-mutter`: `gnome-shell`, `xdotool`, `wmctrl`, `xclip`.
 - `wayland`: `gnome-shell`, `wl-copy`, `wl-paste`.
+- `wayland-labwc`: `labwc`, `grim`, `wlr-randr`, `wayland-info`, `wl-copy`, `wl-paste`, `xsettingsd`, `at-spi2-registryd` (found on `PATH` or in `/usr/libexec`, `/usr/lib`, `/usr/lib/at-spi2-core`, `/usr/lib/x86_64-linux-gnu`), `gnome-calculator`, `gnome-text-editor`, and one of `chromium`, `google-chrome`, `google-chrome-stable`.
 - The legs also drive the GNOME apps Calculator, Text Editor, Files, Terminal and Settings, and a PyQt6 test window. AT-SPI must be available in the private session.
 
 The runner inherits the caller's tool paths and libraries: supply tools through `PATH` and shared libraries through `LD_LIBRARY_PATH`. Qt legs run under `python3`; set `AGENT_DESKTOP_QT_PYTHON` when PyQt6 lives in a separate interpreter. That does not change the harness interpreter.
@@ -36,6 +37,21 @@ The runner inherits the caller's tool paths and libraries: supply tools through 
 - `--tier x11-openbox`: private Xvfb and openbox.
 - `--tier x11-mutter`: private Xvfb and the private mutter shell wrapper.
 - `--tier wayland`: private bus and a health-gated headless GNOME Wayland shell.
+- `--tier wayland-labwc`: private bus (no Xvfb) and a headless labwc (wlroots) compositor started by `scripts/private-labwc-shell.sh`: `WLR_BACKENDS=headless`, `WLR_RENDERER=pixman`, `WLR_LIBINPUT_NO_DEVICES=1`, one `1280x720@60Hz` output set through `wlr-randr`, Xwayland kept alive by `xsettingsd`, accessibility enabled, and `at-spi2-registryd` started inside the session because some distributions activate it only through the owner's systemd user manager. The launcher runs the command only after the Wayland socket, Xwayland, the output mode, the wlroots input, screencopy and toplevel globals, and the AT-SPI registry all answer. `runner/labwc-rc.xml` places Calculator at (40, 40) and Text Editor at (480, 60), so legs can turn AT-SPI window-relative extents into output points and pixel regions. Apps see `XDG_SESSION_TYPE=wayland` and `XDG_CURRENT_DESKTOP=labwc:wlroots`.
+
+The output mode names its refresh rate on purpose: a headless output without one runs at 0 Hz, schedules no frames, and every capture then reads stale pixels. A fresh labwc seat has no input devices and activates no window on map until it has seen input, so the key and focus legs first click inside the placed Text Editor with a headed `mouse-click`.
+
+`bash scripts/test-private-labwc-shell.sh` checks the launcher on its own.
+
+The tier runs the `labwc` on `PATH` unless `LABWC` names another binary; `LABWC_LD_LIBRARY_PATH` is the library path that binary alone runs with, for example Amp's compositor:
+
+```sh
+LABWC=/opt/amp-wayland/bin/labwc \
+LABWC_LD_LIBRARY_PATH=/opt/amp-wayland/lib/x86_64-linux-gnu:/opt/amp-wayland/lib \
+  bash tests/e2e-linux/run.sh --tier wayland-labwc
+```
+
+The gate requires `LABWC` to be executable, the launcher records its `--version` output in `$XDG_RUNTIME_DIR/labwc/version`, and the report's first line names that version and binary.
 
 Each tier runs the headless and headed modes registered for that leg. A headed mode on a headless compositor sends synthetic input inside that private session, not to the user's desktop.
 
@@ -68,11 +84,33 @@ for leg in REGISTRY:
 PYLIST
 ```
 
-Change the tier string to `x11-mutter` or `wayland` for those inventories.
+Change the tier string to `x11-mutter`, `wayland` or `wayland-labwc` for those inventories.
+
+### labwc legs
+
+Every `labwc.*` leg is registered for `wayland-labwc` only and reads its effect independently:
+
+| Leg | Mode | Product command | Independent oracle |
+| --- | --- | --- | --- |
+| `labwc.list_displays_matches_output` | headless | `list-displays` | `wlr-randr --json`: name, position, size and scale of the one output |
+| `labwc.press_modifiers_replace_text` | headless | `press ctrl+a`, `press shift+b` after a semantic `type` of `hello world` | raw AT-SPI Text of the editor's document reads `B`; restored to `hello world` |
+| `labwc.headed_type_exact_text` | headed | `--headed type @ref 'Ben from srv! @#$'` | raw AT-SPI Text reads exactly that string |
+| `labwc.headed_click_calculator_maximized` | headed | `maximize --window-id` and `focus-window --window-id`, then `--headed click @ref` on the `7` button | raw AT-SPI Calculator display reads `7`; cleared through the raw `C` action and the window restored |
+| `labwc.headed_click_calculator_pixel_route` | headed | `--headed click @ref` on the `7` button of the placed, unmaximized Calculator | raw AT-SPI Calculator display reads `7`; `not-applicable` when `wayland-info` lists no `ext_foreign_toplevel_image_capture_source_manager_v1` |
+| `labwc.headed_click_unplaced_refused` | headed | `--headed click @ref` on the `7` button of the unmaximized Calculator | `asserted-refusal`: `ACTION_FAILED`, `details.kind=wlroots_window_origin_unproven`, `not_delivered`, suggestion naming `maximize --window-id <id>`; the raw AT-SPI display is unchanged; `not-applicable` when `wayland-info` lists `ext_foreign_toplevel_image_capture_source_manager_v1` |
+| `labwc.mouse_click_calculator_digit` | headed | `--headed mouse-click --xy` at the placed centre of the `8` button | raw AT-SPI Calculator display reads `8` |
+| `labwc.chromium_headed_click` | headed | `maximize` and `focus-window` on the browser frame, then `--headed click @ref` on a local page's button whose onclick rewrites the heading | raw AT-SPI heading text changes from `Waiting` to `Clicked`; restored through the raw Reload action |
+| `labwc.screenshot_matches_grim` | headless | `screenshot --screen 0 <path>` | `grim -o <output>`: same size, at most 2% of pixels differ by more than the per-channel delta (`oracle/pixels.py`) |
+| `labwc.list_windows_matches_atspi_frames` | headless | `list-windows` | raw AT-SPI frames of the owned Calculator and Text Editor: same ids and titles |
+| `labwc.focus_window_moves_active` | headless | `focus-window --window-id` to Calculator, then back | raw AT-SPI `ACTIVE` moves to the Calculator frame and back |
+| `labwc.close_app_graceful` | headless | `close-app gnome-calculator` without `--force` | the process exits with status 0 and its AT-SPI application disappears |
+| `labwc.move_window_refused` | headless | `move-window --window-id … --x 300 --y 120` | `asserted-refusal`: `ACTION_NOT_SUPPORTED`, `not_delivered`, and `grim` pixels over the placed Calculator unchanged |
+
+Chromium rewrites its process environment, so the runtime-directory attribution cannot see it. The Chromium leg owns the browser by the PID it started, its session and its private `--user-data-dir`, and stops every such process itself.
 
 ### Outcomes
 
-The report groups outcomes by tier and mode. Only `pass` and `asserted-refusal` exit 0.
+The report groups outcomes by tier and mode and starts with the compositor's `--version` line on `wayland-labwc`. Only `pass`, `asserted-refusal` and `not-applicable` exit 0.
 
 | Outcome | Meaning |
 | --- | --- |
@@ -82,6 +120,7 @@ The report groups outcomes by tier and mode. Only `pass` and `asserted-refusal` 
 | `error` | An unexpected exception, an evidence write failure, a changed staged binary, or a teardown failure. |
 | `blocked` | The leg raised `NotImplementedError`. |
 | `unimplemented` | The leg is registered but has no implementation. |
+| `not-applicable` | The leg observed that the tier's compositor lacks, or offers, the global its requirement is conditioned on; the detail names the observation and the leg that covers the other case. |
 | `outstanding`, `owner-decision` | Registered but deliberately not run; the reason is printed. |
 | `tier-unavailable` | The tier's private session never became healthy or its desktop warm-up failed, so its legs did not run. |
 
@@ -125,10 +164,10 @@ Tray legs (`tray.*`, `x11-mutter`, headless) register a harness StatusNotifierIt
 
 The registry is the inventory; these surfaces have no live claim, and their coverage lives in the named tests.
 
-- Electron and Chromium: no leg in this registry.
+- Electron: no leg in this registry. Chromium: only `labwc.chromium_headed_click` on `wayland-labwc`.
 - Clipboard HTML import: unsupported by design. `clipboard-get` reads only the text and image targets (`formats::TEXT_TARGETS`, `targets::choose_target`; `x11_read_tests::an_owner_without_the_wanted_target_reads_as_absent`). The clipboard legs cover text, image, owner lifetime, clear and a foreign read after the CLI exited.
 - Positive `select` on a display value: only `select.refusal_without_semantic_route` is live. `crates/linux/src/actions/select/select_tests.rs` and `select_search_tests.rs` cover route, identity, effect and refusal.
-- Wayland: the private shell has no keyboard seat, so focus and window capture are live only as fail-closed refusals (`wayland_actions.*`, `gaps.wayland_window_capture_refused`). The other Wayland legs check that `list-windows` reports no position, that a seatless semantic click works, and that an unhealthy shell fails the tier with a named reason.
+- GNOME Wayland (`wayland`): the private shell has no keyboard seat, so focus and window capture are live only as fail-closed refusals (`wayland_actions.*`, `gaps.wayland_window_capture_refused`). The other Wayland legs check that `list-windows` reports no position, that a seatless semantic click works, and that an unhealthy shell fails the tier with a named reason.
 
 ## Reading a failure
 
@@ -184,7 +223,7 @@ python3 -I -m unittest discover -s tests/e2e -p 'test_*.py'
 
 ## KDE manual matrix
 
-The runner hosts GNOME sessions only. The same surface is walked by hand on a real KDE Plasma desktop. The table is an acceptance checklist, not copy/paste shell commands: choose concrete apps and refs and record the setup. Use the `agent-desktop` executable prefix for every product command. Pointer, drag and notification mutation commands require global `--headed`; `dismiss-notification` and `notification-action` also require a fingerprint from the same listing (`--expected-app` or `--expected-title`). The `_NET_ACTIVE_WINDOW` oracle applies to X11 only; Wayland uses independent raw window ACTIVE/focus reads and exact documented refusal outcomes.
+The runner hosts GNOME and labwc sessions only. The same surface is walked by hand on a real KDE Plasma desktop. The table is an acceptance checklist, not copy/paste shell commands: choose concrete apps and refs and record the setup. Use the `agent-desktop` executable prefix for every product command. Pointer, drag and notification mutation commands require global `--headed`; `dismiss-notification` and `notification-action` also require a fingerprint from the same listing (`--expected-app` or `--expected-title`). The `_NET_ACTIVE_WINDOW` oracle applies to X11 only; Wayland uses independent raw window ACTIVE/focus reads and exact documented refusal outcomes.
 
 One row per cell; a cell that cannot run on the session is written down with its reason, never left blank.
 

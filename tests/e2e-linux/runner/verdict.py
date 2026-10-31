@@ -10,6 +10,11 @@ from runner.product import Envelope, run_product
 from runner.session import Tier, _proc_members
 
 
+class NotApplicable(Exception):
+    """Raised by a leg after it observed that the tier's compositor lacks, or has, what the
+    leg's requirement is conditioned on; the message names that observation."""
+
+
 @dataclass(frozen=True)
 class OwnedSet:
     members: frozenset[tuple[int, int]]

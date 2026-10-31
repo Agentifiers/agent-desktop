@@ -14,7 +14,7 @@ from pathlib import Path
 HARNESS_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HARNESS_ROOT))
 
-TIER_CHOICES = ("x11-openbox", "x11-mutter", "wayland")
+TIER_CHOICES = ("x11-openbox", "x11-mutter", "wayland", "wayland-labwc")
 TIER_DEADLINE_S = 90.0
 LEASE_FD_ENV = "AGENT_DESKTOP_INTERACTION_LEASE_FD"
 SUITE_ENV = "AGENT_DESKTOP_E2E_SUITE"
@@ -139,6 +139,9 @@ def _run_leg(impl, leg, tier_obj, tier_name: str, mode: str, suite_dir: Path, ve
             detail = "; ".join(failures)
     except TierUnavailable:
         raise
+    except verdict.NotApplicable as error:
+        outcome = report.NOT_APPLICABLE
+        detail = str(error)
     except NotImplementedError as error:
         outcome = report.BLOCKED
         detail = str(error)
@@ -175,7 +178,21 @@ def _run_leg(impl, leg, tier_obj, tier_name: str, mode: str, suite_dir: Path, ve
     return result
 
 
-def _run_tier(tier_name: str, legs_for_tier, impls, suite_dir: Path, verify_binary: bool):
+def _compositor_note(tier_obj) -> str | None:
+    """The labwc version line the private launcher recorded, for the report."""
+    runtime = getattr(tier_obj, "env", {}).get("XDG_RUNTIME_DIR")
+    if not runtime:
+        return None
+    try:
+        version = (Path(runtime) / "labwc" / "version").read_text().strip()
+    except OSError:
+        return None
+    binary = os.environ.get("LABWC") or "labwc"
+    return f"compositor {tier_obj.name}: {version} ({binary})"
+
+
+def _run_tier(tier_name: str, legs_for_tier, impls, suite_dir: Path, verify_binary: bool,
+              notes: list[str] | None = None):
     from runner import apps, readiness, report, session, stage, verdict
 
     outcomes = [report.LegOutcome(leg.id, tier_name, mode, leg.disposition, leg.reason)
@@ -193,6 +210,9 @@ def _run_tier(tier_name: str, legs_for_tier, impls, suite_dir: Path, verify_bina
                 apps.prime_desktop(tier_obj)
             except (OSError, AssertionError, RuntimeError) as error:
                 raise session.TierUnavailable(f"{tier_name}: desktop warm-up failed: {error}") from error
+            note = _compositor_note(tier_obj)
+            if note and notes is not None:
+                notes.append(note)
             for leg in legs_for_tier:
                 impl = impls.get(leg.id)
                 for mode in leg.modes:
@@ -314,6 +334,7 @@ def main(argv: list[str]) -> int:
 
     impls = legs.implementations()
     outcomes = []
+    notes: list[str] = []
     for tier_name in tiers:
         legs_for_tier = [
             leg for leg in legs.REGISTRY if leg.id in selected_ids and tier_name in leg.tiers
@@ -322,12 +343,12 @@ def main(argv: list[str]) -> int:
             continue
         outcomes.extend(
             _run_tier(
-                tier_name, legs_for_tier, impls, suite_dir, not args.lying_actions
+                tier_name, legs_for_tier, impls, suite_dir, not args.lying_actions, notes
             )
         )
 
     report_path = Path(suite_dir) / "report.txt"
-    text = report.render(outcomes)
+    text = report.render(outcomes, tuple(notes))
     try:
         report_path.write_text(text + "\n")
     except OSError:

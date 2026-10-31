@@ -45,6 +45,10 @@ def probe(tier, app):
         if not shell.name:
             raise RuntimeError("shell AT-SPI name missing")
         shell.children()
+    elif tier.name == "wayland-labwc":
+        if not (tier.runtime_dir / (tier.wayland_display or "")).is_socket():
+            raise RuntimeError("the private labwc socket is gone")
+        raw.registry(tier)
     else:
         if "window id" not in tool(tier, ["xprop", "-root", "_NET_SUPPORTING_WM_CHECK"]):
             raise RuntimeError("X11 window manager is unavailable")

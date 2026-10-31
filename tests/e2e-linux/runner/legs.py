@@ -3,16 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Callable
 
-TIER_NAMES = ("x11-openbox", "x11-mutter", "wayland")
+TIER_NAMES = ("x11-openbox", "x11-mutter", "wayland", "wayland-labwc")
 MODE_NAMES = ("headless", "headed")
-ORACLE_NAMES = ("atspi", "gsettings", "x11", "proc", "pixels", "clipboard", "dbus", "applog")
+ORACLE_NAMES = ("atspi", "gsettings", "x11", "proc", "pixels", "clipboard", "dbus", "applog", "wlr")
 DISPOSITIONS = ("pass", "asserted-refusal", "owner-decision", "outstanding")
 
 X11 = ("x11-openbox", "x11-mutter")
 OPENBOX_ONLY = ("x11-openbox",)
 MUTTER_ONLY = ("x11-mutter",)
 WAYLAND_ONLY = ("wayland",)
-ALL_TIERS = TIER_NAMES
+LABWC_ONLY = ("wayland-labwc",)
+ZOO_TIERS = ("x11-openbox", "x11-mutter", "wayland")
 HEADLESS = ("headless",)
 HEADED = ("headed",)
 BOTH_MODES = MODE_NAMES
@@ -198,6 +199,22 @@ REGISTRY: tuple[Leg, ...] = (
     Leg('batch_contract.entry_failure_and_stop_on_error', 'A failed batch entry reports its own STALE_REF and later entries still run; --stop-on-error halts with stopped.reason and the failing index; the display shows exactly the entries that ran', 'Calculator', ('x11-openbox', 'x11-mutter'), ('headless',), ('atspi',), 'asserted-refusal', 'the failing entry answers STALE_REF inside an ok batch envelope; stopped.reason stop_on_error at index 1; display 78 without the flag and 7 with it'),
 )
 
+REGISTRY += (
+    Leg('labwc.list_displays_matches_output', 'list-displays reports the one output wlr-randr reads, with its mode and position', 'labwc output', LABWC_ONLY, HEADLESS, ('wlr',), 'pass'),
+    Leg('labwc.press_modifiers_replace_text', 'press ctrl+a then press shift+b replaces the typed document text with B', 'Text Editor', LABWC_ONLY, HEADLESS, ('atspi',), 'pass'),
+    Leg('labwc.headed_type_exact_text', 'Headed type writes punctuation and shifted symbols into the document exactly', 'Text Editor', LABWC_ONLY, HEADED, ('atspi',), 'pass'),
+    Leg('labwc.headed_click_calculator_maximized', 'Headed click on a digit ref of the maximized, focused Calculator enters that digit, placed from the output the toplevel fills', 'Calculator', LABWC_ONLY, HEADED, ('atspi',), 'pass'),
+    Leg('labwc.headed_click_calculator_pixel_route', 'On a compositor with ext_foreign_toplevel_image_capture_source_manager_v1, headed click on a digit ref of the placed, unmaximized Calculator enters that digit; not-applicable after observing the global absent', 'Calculator', LABWC_ONLY, HEADED, ('atspi',), 'pass'),
+    Leg('labwc.headed_click_unplaced_refused', 'On a compositor without per-window capture, headed click on a digit ref of the unmaximized Calculator is refused as wlroots_window_origin_unproven and the display stays unchanged; not-applicable after observing the global present', 'Calculator', LABWC_ONLY, HEADED, ('atspi',), 'asserted-refusal', 'ACTION_FAILED wlroots_window_origin_unproven, not_delivered, naming maximize --window-id; the raw AT-SPI display is unchanged'),
+    Leg('labwc.mouse_click_calculator_digit', 'mouse-click at the output point of a placed digit button enters that digit', 'Calculator', LABWC_ONLY, HEADED, ('atspi',), 'pass'),
+    Leg('labwc.chromium_headed_click', 'Headed click on a page button of the maximized, focused browser runs its onclick and changes the page heading', 'Chromium', LABWC_ONLY, HEADED, ('atspi',), 'pass'),
+    Leg('labwc.screenshot_matches_grim', 'A screen screenshot matches the pixels grim reads from the same output', 'Calculator', LABWC_ONLY, HEADLESS, ('pixels', 'wlr'), 'pass'),
+    Leg('labwc.list_windows_matches_atspi_frames', 'list-windows lists exactly the Calculator and Text Editor frames AT-SPI exposes', 'Calculator and Text Editor', LABWC_ONLY, HEADLESS, ('atspi',), 'pass'),
+    Leg('labwc.focus_window_moves_active', 'focus-window moves the raw ACTIVE state to the target window and back', 'Calculator and Text Editor', LABWC_ONLY, HEADLESS, ('atspi',), 'pass'),
+    Leg('labwc.close_app_graceful', 'Graceful close-app ends the Calculator process without --force', 'Calculator', LABWC_ONLY, HEADLESS, ('proc', 'atspi'), 'pass'),
+    Leg('labwc.move_window_refused', 'move-window refuses with ACTION_NOT_SUPPORTED and the window stays where it was', 'Calculator', LABWC_ONLY, HEADLESS, ('pixels', 'wlr'), 'asserted-refusal', 'ACTION_NOT_SUPPORTED, not_delivered; the output pixels around the placed window are unchanged'),
+)
+
 RESTORED_MUTTER_EVENTS = (
     'gaps.event_window-opened_scoped_success.mutter_owner',
     'gaps.event_window-opened_scoped_quiet.mutter_owner',
@@ -217,7 +234,7 @@ REGISTRY += tuple(
     Leg(f"ref_contract.zoo_{toolkit}{suffix}",
         (f"Every snapshot ref of the {label} zoo lands or is marked and refused"
          if not suffix else f"The {label} zoo exposes and operates its window surfaces"),
-        f"Zoo {label}", ALL_TIERS, HEADLESS, ("atspi", "applog"), "pass")
+        f"Zoo {label}", ZOO_TIERS, HEADLESS, ("atspi", "applog"), "pass")
     for toolkit, label in (("gtk3", "GTK3"), ("gtk4", "GTK4"), ("qt", "Qt"))
     for suffix in ("", "_windows")
 )
