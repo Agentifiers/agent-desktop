@@ -5,9 +5,11 @@ use super::hit_verdict::Landing;
 use crate::tree::{AtspiElement, Extents};
 
 mod bus_nodes;
+mod leaf_nodes;
 mod shown_nodes;
 
 pub(crate) use bus_nodes::BusNodes;
+pub(crate) use leaf_nodes::LeafNodes;
 pub(crate) use shown_nodes::ShownNodes;
 
 /// How many `GetAccessibleAtPoint` levels one descent follows, and how many
@@ -41,6 +43,9 @@ pub(crate) trait NodeSource {
         &mut self,
         node: &AtspiElement,
     ) -> Result<Option<AtspiElement>, AdapterError>;
+    /// The node `Parent` names, whether or not its children list `node`.
+    fn claimed_parent(&mut self, node: &AtspiElement)
+    -> Result<Option<AtspiElement>, AdapterError>;
     fn children(&mut self, node: &AtspiElement) -> Result<Option<Vec<AtspiElement>>, AdapterError>;
     fn describe(&mut self, node: &AtspiElement) -> Result<Described, AdapterError>;
 }

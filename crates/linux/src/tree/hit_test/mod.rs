@@ -222,11 +222,13 @@ pub(crate) fn pointer_hit_test(
         };
         let placing = placed_world::Placing {
             facts: world,
-            nodes: hit_descent::ShownNodes {
-                nodes: hit_descent::BusNodes {
-                    connection: &connection,
-                    deadline,
-                    screen_origin: None,
+            nodes: hit_descent::LeafNodes {
+                nodes: hit_descent::ShownNodes {
+                    nodes: hit_descent::BusNodes {
+                        connection: &connection,
+                        deadline,
+                        screen_origin: None,
+                    },
                 },
             },
             locate,

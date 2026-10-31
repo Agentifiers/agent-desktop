@@ -5,8 +5,8 @@ use agent_desktop_core::ErrorCode;
 use super::*;
 use crate::system::process::toolkit_id::ToolkitId;
 use crate::tree::Extents;
-use crate::tree::hit_test::hit_descent::Described;
 use crate::tree::hit_test::hit_descent::tests::{FakeNodes, el};
+use crate::tree::hit_test::hit_descent::{Described, LeafNodes};
 
 fn rect(x: i32, y: i32, width: i32, height: i32) -> Extents {
     Extents {
@@ -183,6 +183,55 @@ fn chromium_screen_extents_are_replaced_by_the_placed_rectangle() {
         run(&mut world, Some(&place), (200, 260)),
         HitTestResult::Unknown
     );
+}
+
+/// Chrome after its renderer answered a point query at the button: the
+/// frame's query names the button's text, which names the button its parent
+/// while the button lists no children.
+fn chrome_hidden_text(world: &mut World) {
+    world.nodes.leads.clear();
+    world
+        .nodes
+        .claim("/text", "/target")
+        .lead("/frame", "/text")
+        .lead("/text", "/text");
+    world.nodes.described.insert(
+        "/text".to_owned(),
+        Described {
+            window_extents: Some(rect(124, 224, 60, 28)),
+            ..Described::default()
+        },
+    );
+}
+
+#[test]
+fn chromium_button_text_at_the_point_reaches_the_leaf_button_it_belongs_to() {
+    let place = Place::at((0, 0), Some(true));
+    let mut bare = World::new(Some(chromium()));
+    chrome_hidden_text(&mut bare);
+    assert_eq!(
+        run(&mut bare, Some(&place), (150, 230)),
+        HitTestResult::Unknown
+    );
+    let mut world = World::new(Some(chromium()));
+    chrome_hidden_text(&mut world);
+    let nodes = LeafNodes {
+        nodes: std::mem::take(&mut world.nodes),
+    };
+    let placing = Placing {
+        facts: &mut world,
+        nodes,
+        locate: |_: &FrameFacts| -> Result<Option<&Place>, AdapterError> { Ok(Some(&place)) },
+    };
+    let result = hit_test_placed(
+        placing,
+        &el("/target"),
+        &el("/frame"),
+        (150, 230),
+        deadline(),
+    )
+    .expect("no error");
+    assert_eq!(result, HitTestResult::ReachesTarget);
 }
 
 #[test]

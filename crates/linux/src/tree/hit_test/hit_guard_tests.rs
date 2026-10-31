@@ -16,6 +16,27 @@ fn rectangle_boundaries_use_widened_half_open_coordinates() {
 }
 
 #[test]
+fn a_rectangle_encloses_what_lies_inside_its_edges() {
+    let button = rect(8, 95, 62, 21);
+    assert!(encloses(button, rect(16, 98, 46, 15)));
+    assert!(encloses(button, button));
+    for outside in [
+        rect(7, 98, 46, 15),
+        rect(16, 98, 55, 15),
+        rect(16, 98, 46, 19),
+        rect(100, 200, 10, 10),
+    ] {
+        assert!(!encloses(button, outside), "{outside:?} reaches outside");
+    }
+    assert!(!encloses(button, rect(16, 98, 0, 15)));
+    assert!(!encloses(rect(i32::MIN, 95, 62, 21), rect(16, 98, 46, 15)));
+    assert!(encloses(
+        rect(i32::MAX - 10, 0, 10, 1),
+        rect(i32::MAX - 5, 0, 5, 1)
+    ));
+}
+
+#[test]
 fn pixels_floor_and_reject_non_finite_values() {
     assert_eq!(pixel(310.9, 154.0), Some((310, 154)));
     assert_eq!(pixel(-0.5, 2.0), Some((-1, 2)));

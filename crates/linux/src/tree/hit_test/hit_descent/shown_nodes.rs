@@ -36,6 +36,13 @@ impl NodeSource for ShownNodes<'_> {
         self.nodes.verified_parent(node)
     }
 
+    fn claimed_parent(
+        &mut self,
+        node: &AtspiElement,
+    ) -> Result<Option<AtspiElement>, AdapterError> {
+        self.nodes.claimed_parent(node)
+    }
+
     fn children(&mut self, node: &AtspiElement) -> Result<Option<Vec<AtspiElement>>, AdapterError> {
         let Some(children) = self.nodes.children(node)? else {
             return Ok(None);

@@ -19,6 +19,19 @@ pub(crate) fn admits(rect: Extents, point: (i32, i32)) -> bool {
     inside(rect.x, rect.width, point.0) && inside(rect.y, rect.height, point.1)
 }
 
+/// Whether `inner` lies wholly inside `outer`, edges included. A rectangle
+/// no pointer can reach encloses nothing and lies inside nothing.
+pub(crate) fn encloses(outer: Extents, inner: Extents) -> bool {
+    if !aimable(outer) || !aimable(inner) {
+        return false;
+    }
+    let end = |origin: i32, extent: i32| i64::from(origin) + i64::from(extent);
+    inner.x >= outer.x
+        && inner.y >= outer.y
+        && end(inner.x, inner.width) <= end(outer.x, outer.width)
+        && end(inner.y, inner.height) <= end(outer.y, outer.height)
+}
+
 /// The whole-pixel point a floating point one falls in, or `None` when it is
 /// not finite or out of range.
 pub(crate) fn pixel(x: f64, y: f64) -> Option<(i32, i32)> {

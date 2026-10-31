@@ -44,6 +44,24 @@ async fn string_property(
     value.downcast_ref::<&str>().ok().map(str::to_owned)
 }
 
+async fn parent_of(connection: &Connection, node: &AtspiElement) -> Option<AtspiElement> {
+    let reply = call(
+        connection,
+        node,
+        PROPERTIES_INTERFACE,
+        "Get",
+        &(ACCESSIBLE_INTERFACE, "Parent"),
+    )
+    .await
+    .ok()?;
+    let value = reply.body().deserialize::<OwnedValue>().ok()?;
+    let (bus, path) = <(String, OwnedObjectPath)>::try_from(value).ok()?;
+    match named(bus, path.to_string(), node) {
+        Hit::Object(parent) => Some(parent),
+        Hit::Null | Hit::Failed => None,
+    }
+}
+
 impl NodeSource for BusNodes<'_> {
     fn at_point(&mut self, from: &AtspiElement, point: (i32, i32)) -> Result<Hit, AdapterError> {
         let (point, coordinates) = if let Some(origin) = self.screen_origin {
@@ -94,24 +112,7 @@ impl NodeSource for BusNodes<'_> {
         node: &AtspiElement,
     ) -> Result<Option<AtspiElement>, AdapterError> {
         within(self.deadline, async {
-            let Ok(reply) = call(
-                self.connection,
-                node,
-                PROPERTIES_INTERFACE,
-                "Get",
-                &(ACCESSIBLE_INTERFACE, "Parent"),
-            )
-            .await
-            else {
-                return Ok(None);
-            };
-            let Ok(value) = reply.body().deserialize::<OwnedValue>() else {
-                return Ok(None);
-            };
-            let Ok((bus, path)) = <(String, OwnedObjectPath)>::try_from(value) else {
-                return Ok(None);
-            };
-            let Hit::Object(parent) = named(bus, path.to_string(), node) else {
+            let Some(parent) = parent_of(self.connection, node).await else {
                 return Ok(None);
             };
             let listed = list_children(self.connection, &parent).await;
@@ -121,6 +122,15 @@ impl NodeSource for BusNodes<'_> {
                     .any(|(bus, path)| bus == node.bus_name() && path == node.path())
                     .then_some(parent)
             }))
+        })
+    }
+
+    fn claimed_parent(
+        &mut self,
+        node: &AtspiElement,
+    ) -> Result<Option<AtspiElement>, AdapterError> {
+        within(self.deadline, async {
+            Ok(parent_of(self.connection, node).await)
         })
     }
 

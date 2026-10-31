@@ -274,7 +274,11 @@ makes the compositor release every key and button the device still holds.
   compositor path: their X11 position matches the screen, but X11 stacking
   cannot see native Wayland windows above them. The hit test ignores children
   that are neither `VISIBLE` nor `SHOWING`, such as the invisible full-window
-  panel Chromium keeps beside its content.
+  panel Chromium keeps beside its content. It also counts a point as reaching
+  a target that lists no children when the node the point query names gives
+  that target as its `Parent` and lies inside it: Chromium lists a page
+  button as a leaf, but once it has hit-tested a point on the button it
+  answers with the button's text node.
 - **Focus.** `focus-window` and the focus step of headed ref actions activate
   the window through `zwlr_foreign_toplevel_manager_v1`; see
   `references/windows-and-lifecycle.md`. A fresh labwc seat that has never had

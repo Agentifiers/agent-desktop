@@ -7,7 +7,8 @@ pub(crate) fn el(path: &str) -> AtspiElement {
     AtspiElement::new(":1.1", path, 1)
 }
 
-/// In-memory point results and verified ancestry. Missing parent edges are
+/// In-memory point results and ancestry. A `Parent` edge is verified when
+/// the parent's child list names the node, as on the bus; missing edges are
 /// deliberately unverified; point coordinates are retained for calibration.
 #[derive(Default)]
 pub(crate) struct FakeNodes {
@@ -30,6 +31,26 @@ impl FakeNodes {
         self.parents.insert(node.to_owned(), parent.to_owned());
         self
     }
+
+    /// `node` names `parent` its `Parent`, and `parent` lists the children
+    /// it lists now, which leaves `node` out.
+    pub(crate) fn claim(&mut self, node: &str, parent: &str) -> &mut Self {
+        let listed = self.listed(parent);
+        self.child_lists.insert(parent.to_owned(), listed);
+        self.parent(node, parent)
+    }
+
+    fn listed(&self, node: &str) -> Vec<String> {
+        match self.child_lists.get(node) {
+            Some(paths) => paths.clone(),
+            None => self
+                .parents
+                .iter()
+                .filter(|(_, owner)| owner.as_str() == node)
+                .map(|(path, _)| path.clone())
+                .collect(),
+        }
+    }
 }
 
 impl NodeSource for FakeNodes {
@@ -47,20 +68,29 @@ impl NodeSource for FakeNodes {
         node: &AtspiElement,
     ) -> Result<Option<AtspiElement>, AdapterError> {
         self.calls.push("verified_parent");
+        Ok(self
+            .parents
+            .get(node.path())
+            .filter(|parent| self.listed(parent).iter().any(|path| path == node.path()))
+            .map(|path| el(path)))
+    }
+
+    fn claimed_parent(
+        &mut self,
+        node: &AtspiElement,
+    ) -> Result<Option<AtspiElement>, AdapterError> {
+        self.calls.push("claimed_parent");
         Ok(self.parents.get(node.path()).map(|path| el(path)))
     }
 
     fn children(&mut self, node: &AtspiElement) -> Result<Option<Vec<AtspiElement>>, AdapterError> {
         self.calls.push("children");
-        Ok(Some(match self.child_lists.get(node.path()) {
-            Some(paths) => paths.iter().map(|path| el(path)).collect(),
-            None => self
-                .parents
+        Ok(Some(
+            self.listed(node.path())
                 .iter()
-                .filter(|(_, owner)| owner.as_str() == node.path())
-                .map(|(path, _)| el(path))
+                .map(|path| el(path))
                 .collect(),
-        }))
+        ))
     }
 
     fn describe(&mut self, node: &AtspiElement) -> Result<Described, AdapterError> {
