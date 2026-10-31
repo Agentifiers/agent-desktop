@@ -213,6 +213,10 @@ REGISTRY += (
     Leg('labwc.focus_window_moves_active', 'focus-window moves the raw ACTIVE state to the target window and back', 'Calculator and Text Editor', LABWC_ONLY, HEADLESS, ('atspi',), 'pass'),
     Leg('labwc.close_app_graceful', 'Graceful close-app ends the Calculator process without --force', 'Calculator', LABWC_ONLY, HEADLESS, ('proc', 'atspi'), 'pass'),
     Leg('labwc.move_window_refused', 'move-window refuses with ACTION_NOT_SUPPORTED and the window stays where it was', 'Calculator', LABWC_ONLY, HEADLESS, ('pixels', 'wlr'), 'asserted-refusal', 'ACTION_NOT_SUPPORTED, not_delivered; the output pixels around the placed window are unchanged'),
+    Leg('labwc.cursor_overlay_follows_moves', 'cursor-overlay enable answers rendered: true and starts one helper; grim shows the marker tip at each headed mouse-move point and nowhere else; disable leaves the output as it was and no helper process', 'labwc output', LABWC_ONLY, HEADED, ('pixels', 'wlr', 'proc'), 'pass'),
+    Leg('labwc.cursor_overlay_click_passes_through', 'With the marker drawn over a Calculator digit, the activation and list-windows stay unchanged and a headed mouse-click at that very point enters the digit', 'Calculator', LABWC_ONLY, HEADED, ('atspi', 'pixels', 'wlr'), 'pass'),
+    Leg('labwc.cursor_overlay_hidden_from_screenshots', 'A screen screenshot taken while the marker is drawn shows the bare output there, as on X11, and the marker is back on the output afterwards', 'labwc output', LABWC_ONLY, HEADED, ('pixels', 'wlr'), 'pass'),
+    Leg('labwc.cursor_overlay_semantic_marks_proven_only', 'A headless semantic click on a digit ref of the placed, unmaximized Calculator moves the marker onto the digit where per-window capture proves the window place and leaves it parked where it does not', 'Calculator', LABWC_ONLY, HEADLESS, ('atspi', 'pixels', 'wlr'), 'pass'),
 )
 
 RESTORED_MUTTER_EVENTS = (

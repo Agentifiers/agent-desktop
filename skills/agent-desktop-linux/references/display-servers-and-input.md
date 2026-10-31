@@ -284,8 +284,13 @@ makes the compositor release every key and button the device still holds.
   `references/windows-and-lifecycle.md`. A fresh labwc seat that has never had
   a keyboard gives no window `ACTIVE`; `focus-window` attaches a virtual
   keyboard that sends no key so the frame can report it.
+- **Cursor overlay.** Drawn when the compositor offers `zwlr_layer_shell_v1`
+  (both labwc versions): a click-through arrow on the overlay layer, held by a
+  per-session `agent-desktop` helper process. Its tip moves to each pointer
+  point and to each ref target whose window place is proven; an unproven
+  target is not marked. See the Cursor overlay section of `SKILL.md`.
 - **Unavailable.** `key-down`, `key-up`, `mouse-down` and `mouse-up` fail closed
-  as on every platform. The cursor overlay is not drawn on any Wayland session.
+  as on every platform.
 
 labwc 0.20.2 offers every protocol above. labwc 0.9.8 has no
 `ext_foreign_toplevel_image_capture_source_manager_v1`, so window screenshots

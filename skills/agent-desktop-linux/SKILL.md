@@ -56,7 +56,7 @@ every other Wayland compositor.
 | Wait | `wait` | Works for ms, `--element`, `--window`, `--text`, `--menu`, `--menu-closed`, `--event`. Menu waits share the menu-surface detector; `--notification` waits for a new notification on GNOME |
 | Notifications | `list-notifications`, `dismiss-notification`, `dismiss-all-notifications`, `notification-action` | GNOME Shell only; list headless, mutations `--headed` on X11, and `dismiss-notification` and `notification-action` also need `--expected-app` or `--expected-title`. Fields are read from the shell's widget layout, verified on GNOME Shell 46.0 only, and each mutation is proven by its effect. Wayland refuses the shell pointer before input. A notification owner that is not the shell or its own helper returns `PLATFORM_NOT_SUPPORTED`. See the shell reference |
 | Shell surfaces | `open-system-surface` | Only `system-tray` and `action-center` can work. `system-tray` needs a StatusNotifierWatcher (else it refuses with `watcher: absent`); `action-center` needs proven role ancestry. `quick-settings` refuses with `shell_container_unproven`, `taskbar` always refuses, and `start-menu` and `system-tray-overflow` are not supported, though `--help` lists them. See the shell reference |
-| Cursor overlay | `cursor-overlay` | Requires an active session; see Cursor overlay below. X11 enable returns `data.rendered: true`; Wayland saves the setting with `data.rendered: false` |
+| Cursor overlay | `cursor-overlay` | Requires an active session; see Cursor overlay below. X11 and wlroots with `zwlr_layer_shell_v1` (labwc) enable returns `data.rendered: true`; GNOME Wayland saves the setting with `data.rendered: false` |
 | System | `status`, `permissions`, `version`, `batch`, `skills`, `session`, `trace` | Works. `permissions` reports `screen_recording: not_required` on X11 and on wlroots with screencopy |
 
 On labwc the two tested versions differ only where a protocol is missing:
@@ -71,6 +71,7 @@ labwc 0.9.8 lacks `ext_foreign_toplevel_image_capture_source_manager_v1`.
 | `move-window`, `resize-window` | Refused, `wlroots_no_geometry_control` | Refused, `wlroots_no_geometry_control` |
 | `screenshot --app`/`--window-id` | Works | Refused, `PLATFORM_NOT_SUPPORTED` |
 | Headed ref pointer actions | Active maximized or fullscreen window, or any window whose pixels are found | Active maximized or fullscreen window only; otherwise refused, `wlroots_window_origin_unproven` |
+| `cursor-overlay` | Drawn; ref actions mark their target wherever headed ref pointer actions can aim | Drawn; ref actions mark their target only on an active maximized or fullscreen window |
 
 ## First Contact
 
@@ -166,12 +167,35 @@ agent-desktop session end "$session_id"
 ```
 
 Without a session, `cursor-overlay enable` and `disable` return `INVALID_ARGS`.
-On X11, enable returns `data.rendered: true`; on Wayland it saves the setting
-and returns `data.rendered: false` without drawing an overlay.
+On X11 and on a wlroots compositor with `zwlr_layer_shell_v1` (labwc), enable
+returns `data.rendered: true`. On GNOME Wayland, or a compositor without a
+layer shell, it saves the setting and returns `data.rendered: false` without
+drawing an overlay.
+
+Both draw one white arrow with a dark rim. Its tip jumps, without animation,
+to each point a pointer command acts on and to the target of a ref action.
+Labels, ripples and highlights are not drawn; `--image` or `--pointer-image`
+gives `data.rendered: false`. A `--headed` command hides the arrow while it
+dispatches and shows it again afterwards. `screenshot` hides it during the
+capture, so it is never in the image; other screen readers such as `grim` see
+it.
+
+On wlroots:
+
+- The compositor does not say where the pointer is, so nothing is drawn after
+  `enable` until the first pointer command or ref action places the arrow.
+- A ref action marks its target only where the window's place is proven (see
+  the labwc table above). Otherwise the arrow stays where it was.
+- The arrow is a surface on the overlay layer with no keyboard focus and an
+  empty input region: clicks and hover reach the window beneath, activation
+  does not change, and `list-windows` does not list it.
+- A second `agent-desktop` process per session holds it. That process exits
+  on `cursor-overlay disable` and `session end`, when the session ends or its
+  overlay is turned off, and when the compositor exits.
 
 `session start --cursor --multi-agent` returns `data.rendered: false`, because
-nothing is drawn until an agent acts. On X11 each agent id then gets its own
-cursor; on Wayland none is drawn.
+nothing is drawn until an agent acts. On X11 and wlroots each agent id then
+gets its own cursor; on GNOME Wayland none is drawn.
 
 ## What differs on Linux
 

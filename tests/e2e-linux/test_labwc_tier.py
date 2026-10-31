@@ -19,7 +19,7 @@ from oracle import wlr
 from runner import gate, legs, main, session, verdict
 from runner.product import Envelope
 from runner.verdict import LegContext
-from scenarios import labwc_browser, labwc_input, labwc_windows
+from scenarios import labwc_browser, labwc_input, labwc_overlay, labwc_windows
 
 TIER = "wayland-labwc"
 OUTPUT_JSON = json.dumps([
@@ -112,7 +112,7 @@ class SessionTests(unittest.TestCase):
         self.assertIn(TIER, main.TIER_CHOICES)
         self.assertIn(TIER, session._INNER_WRAPPERS)
         labwc = [leg for leg in legs.REGISTRY if leg.id.startswith("labwc.")]
-        self.assertEqual(len(labwc), 13)
+        self.assertEqual(len(labwc), 17)
         self.assertTrue(all(leg.tiers == (TIER,) for leg in labwc))
         self.assertTrue(all(leg.id in legs.implementations() for leg in labwc))
         self.assertFalse([leg.id for leg in legs.REGISTRY
@@ -331,3 +331,56 @@ class CompositorChoiceTests(unittest.TestCase):
                 "interface: 'ext_foreign_toplevel_image_capture_source_manager_v1', version:  1\n")
         self.assertEqual(wlr.parse_globals(text),
                          {"wl_seat", "ext_foreign_toplevel_image_capture_source_manager_v1"})
+
+
+def _painted(points: dict[tuple[int, int], tuple[int, int, int]]):
+    from oracle import pixels
+    rgb = bytearray(bytes(3) * (64 * 64))
+    for (x, y), colour in points.items():
+        offset = (y * 64 + x) * 3
+        rgb[offset:offset + 3] = bytes(colour)
+    return pixels.Image(width=64, height=64, rgb=bytes(rgb))
+
+
+class OverlayOracleTests(unittest.TestCase):
+    ARROW = {(0, 0): labwc_overlay.RIM, (0, 12): labwc_overlay.RIM,
+             (3, 12): labwc_overlay.FILL, (12, 22): labwc_overlay.FILL}
+
+    def _at(self, origin):
+        return {(origin[0] + dx, origin[1] + dy): colour
+                for (dx, dy), colour in self.ARROW.items()}
+
+    def test_the_arrow_is_found_only_with_its_tip_on_the_point(self):
+        image = _painted(self._at((10, 5)))
+        self.assertTrue(labwc_overlay.marker_at(image, (10, 5)))
+        self.assertFalse(labwc_overlay.marker_at(image, (11, 5)))
+        self.assertTrue(labwc_overlay.marker_near(image, (12, 7)))
+        self.assertFalse(labwc_overlay.marker_near(image, (20, 7)))
+
+    def test_a_bare_or_partial_arrow_is_not_the_marker(self):
+        self.assertFalse(labwc_overlay.marker_at(_painted({}), (10, 5)))
+        for missing in self.ARROW:
+            partial = self._at((10, 5))
+            del partial[(10 + missing[0], 5 + missing[1])]
+            self.assertFalse(labwc_overlay.marker_at(_painted(partial), (10, 5)), missing)
+
+    def test_an_arrow_cut_off_by_the_output_edge_is_not_read(self):
+        image = _painted(self._at((50, 40)))
+        self.assertFalse(labwc_overlay.marker_at(image, (50, 40)))
+
+    def test_helpers_are_found_by_session_and_runtime_directory(self):
+        tier = SimpleNamespace(runtime_dir=Path("/rt/a"))
+        ctx = SimpleNamespace(tier=tier)
+        table = {
+            11: {"AGENT_DESKTOP_WLR_CURSOR_SESSION": "run-1", "XDG_RUNTIME_DIR": "/rt/a"},
+            12: {"AGENT_DESKTOP_WLR_CURSOR_SESSION": "run-2", "XDG_RUNTIME_DIR": "/rt/a"},
+            13: {"AGENT_DESKTOP_WLR_CURSOR_SESSION": "run-1", "XDG_RUNTIME_DIR": "/rt/b"},
+            14: {"XDG_RUNTIME_DIR": "/rt/a"},
+        }
+        entries = [SimpleNamespace(name=str(pid)) for pid in table] + [SimpleNamespace(name="self")]
+        with mock.patch.object(labwc_overlay, "Path") as path, \
+                mock.patch.object(labwc_overlay.proc, "facts",
+                                  side_effect=lambda pid: (0, 0, "x", table[pid])):
+            path.return_value.iterdir.return_value = entries
+            self.assertEqual(labwc_overlay.helpers(ctx, "run-1"), [11])
+

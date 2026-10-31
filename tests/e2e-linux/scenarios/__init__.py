@@ -38,6 +38,7 @@ from scenarios import wayland_focus
 from scenarios import wayland_input
 from scenarios import zero_bounds
 from scenarios import labwc_input
+from scenarios import labwc_overlay
 from scenarios import labwc_browser
 from scenarios import labwc_windows
 from scenarios import controlled_targets
@@ -56,6 +57,7 @@ __all__ = [
     "identity",
     "labwc_browser",
     "labwc_input",
+    "labwc_overlay",
     "labwc_windows",
     "launch",
     "lifecycle",
