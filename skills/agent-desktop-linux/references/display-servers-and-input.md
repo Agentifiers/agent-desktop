@@ -279,6 +279,24 @@ makes the compositor release every key and button the device still holds.
   that target as its `Parent` and lies inside it: Chromium lists a page
   button as a leaf, but once it has hit-tested a point on the button it
   answers with the button's text node.
+
+  Two toolkits report a node somewhere other than where they draw it, and the
+  wlroots route moves the node back before it aims, marks or hit-tests it:
+  - GTK 4 counts a stack page's offset twice (`GtkStackPage`, libadwaita view
+    stack and tab pages answer their child's bounds as their own), so every
+    node inside a page reads that offset too far right and down (12 px each
+    way on the Calculator keypad). The node's accessible parents are read up
+    to its window and each page's offset is subtracted once.
+  - Chromium on a fractionally scaled output reports web content in device
+    pixels while its window and browser controls stay in layout units. The
+    tab document's size over its container's, to the nearest 120th, is the
+    scale its content is divided by.
+
+  When those parents cannot be read in time the window is treated as
+  unproven and the action is refused as above. Known limits: a Chromium
+  started at a fractional scale has been seen still aimed in device pixels
+  (the browser fractional alignment leg fails), and X11 and Mutter keep the
+  GTK 4 page offset.
 - **Focus.** `focus-window` and the focus step of headed ref actions activate
   the window through `zwlr_foreign_toplevel_manager_v1`; see
   `references/windows-and-lifecycle.md`. A fresh labwc seat that has never had
