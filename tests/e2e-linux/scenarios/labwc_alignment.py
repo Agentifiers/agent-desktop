@@ -136,6 +136,7 @@ class Alignment:
         self.centre = (round(truth[0] + truth[2] / 2), round(truth[1] + truth[3] / 2))
         self.base = settled(ctx, region)
         self.box = dart_box(self.centre, region, scale)
+        self.park = park_point(ctx)
 
     def outline(self, image: pixels.Image):
         return marks.outline_target(image, self.base, self.scale, self.region[:2])
@@ -145,14 +146,16 @@ class Alignment:
 
     def framed(self, ref: str, *, headed: bool):
         """The outline a click on `ref` draws, read from the frames sampled while it plays:
-        the rectangle most frames agree on."""
+        the rectangle most frames agree on; and the last frame, where the dart rests on the
+        click point before the overlay's idle fade can begin."""
         with Sampler(self.ctx, region=self.region) as sampler:
             command(self.ctx, ["--session", self.session_id, "click", ref], headed=headed)
             raw.poll(lambda: False, 1.6)
-        found = [rect for rect in map(self.outline, sampler.decoded()) if rect is not None]
+        frames = sampler.decoded()
+        found = [rect for rect in map(self.outline, frames) if rect is not None]
         require(found, f"no frame showed an outline around the target after clicking {ref}")
         rounded = [tuple(round(value, 1) for value in rect) for rect in found]
-        return max(set(rounded), key=rounded.count)
+        return max(set(rounded), key=rounded.count), frames[-1]
 
     def reference(self):
         """The dart's marks with its tip on the element's true centre, drawn by a headed move."""
@@ -174,10 +177,16 @@ class Alignment:
         return tuple(round(value, 2) for value in shift)
 
 
+def park_point(ctx: LegContext) -> tuple[int, int]:
+    """The bottom-right corner of the output, away from every target region."""
+    output = wlr.outputs(ctx.tier)[0]
+    width, height = logical_size(output)
+    return width - 30, height - 30
+
+
 def _start(ctx: LegContext, output: wlr.Output) -> str:
     session_id = start_session(ctx, cursor=True)
-    width, height = logical_size(output)
-    move(ctx, session_id, (width - 30, height - 30))
+    move(ctx, session_id, park_point(ctx))
     return session_id
 
 
@@ -215,17 +224,17 @@ def _calculator_aligned(ctx: LegContext, fractional: bool) -> None:
                 ctx.before("pixels.outline", check.outline(check.base))
                 ctx.before("pixels.dart", len(check.dart(check.base)))
                 ref = session_ref(ctx, app, session_id, "7")
-                outline = check.framed(ref, headed=False)
+                outline, last = check.framed(ref, headed=False)
                 check.check_outline(outline)
-                clicked = check.dart(settled(ctx, region))
+                clicked = check.dart(last)
                 reference = check.reference()
                 semantic = check.check_dart(clicked, reference, "the semantic click")
-                check.framed(ref, headed=True)
-                headed = check.check_dart(check.dart(settled(ctx, region)), reference,
-                                          "the headed click")
+                _, last = check.framed(ref, headed=True)
+                headed = check.check_dart(check.dart(last), reference, "the headed click")
                 ctx.after("atspi.display", changed(read, "77"))
                 ctx.after("pixels.outline", outline)
                 ctx.after("pixels.dart", (semantic, headed))
+                move(ctx, session_id, check.park)
                 disable_and_reap(ctx, session_id)
                 quiet = settled(ctx, region)
                 ctx.restored("pixels.outline", check.outline(quiet))
@@ -273,15 +282,13 @@ def _chromium_aligned(ctx: LegContext, fractional: bool) -> None:
             command(ctx, ["focus-window", "--window-id", window])
             require(raw.poll(lambda: fills_output(frame, output), SETTLE_S),
                     f"the browser does not fill the output: {frame.extents(True)}")
-            target = [node for node in root.walk()
-                      if node.role == PUSH_BUTTON and node.name == TARGET]
-            require(len(target) == 1, f"expected one raw page button, found {len(target)}")
-            region = region_around(tuple(target[0].extents(True)), output)
+            whole = (0, 0, *logical_size(output))
             with _session(ctx, output) as session_id:
                 scale = output.scale
-                found = marks.colour_box(settled(ctx, region), MAGENTA)
+                found = marks.colour_box(settled(ctx, whole), MAGENTA)
                 require(found is not None, "the page button's colour is not on the output")
-                truth = marks.to_layout(found, scale, region[:2])
+                truth = marks.to_layout(found, scale)
+                region = region_around(tuple(round(value) for value in truth), output)
                 check = Alignment(ctx, session_id, region, scale, truth)
                 ctx.before("pixels.outline", check.outline(check.base))
                 ctx.before("pixels.dart", len(check.dart(check.base)))
@@ -289,14 +296,13 @@ def _chromium_aligned(ctx: LegContext, fractional: bool) -> None:
                                          "--max-depth", "50"], headed=False, window_id=window)
                 ref = find_ref((snapshot.data or {}).get("tree"), name=TARGET, role="button")
                 require(ref is not None, "the page button has no ref")
-                outline = check.framed(ref, headed=False)
+                outline, last = check.framed(ref, headed=False)
                 check.check_outline(outline)
-                clicked = check.dart(settled(ctx, region))
+                clicked = check.dart(last)
                 reference = check.reference()
                 semantic = check.check_dart(clicked, reference, "the semantic click")
-                check.framed(ref, headed=True)
-                headed = check.check_dart(check.dart(settled(ctx, region)), reference,
-                                          "the headed click")
+                _, last = check.framed(ref, headed=True)
+                headed = check.check_dart(check.dart(last), reference, "the headed click")
                 hit = raw.poll(lambda: landing(root, 2), SETTLE_S)
                 require(hit is not None, f"the page saw no trusted click: {read()}")
                 point = (truth[0] + hit[0], truth[1] + hit[1])
@@ -306,6 +312,7 @@ def _chromium_aligned(ctx: LegContext, fractional: bool) -> None:
                 ctx.after("atspi.heading", read())
                 ctx.after("pixels.outline", outline)
                 ctx.after("pixels.dart", (semantic, headed))
+                move(ctx, session_id, check.park)
                 disable_and_reap(ctx, session_id)
                 quiet = settled(ctx, region)
                 ctx.restored("pixels.outline", check.outline(quiet))
