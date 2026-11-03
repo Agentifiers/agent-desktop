@@ -288,15 +288,23 @@ makes the compositor release every key and button the device still holds.
     way on the Calculator keypad). The node's accessible parents are read up
     to its window and each page's offset is subtracted once.
   - Chromium on a fractionally scaled output reports web content in device
-    pixels while its window and browser controls stay in layout units. The
-    tab document's size over its container's, to the nearest 120th, is the
-    scale its content is divided by.
+    pixels while its window and browser controls stay in layout units, and
+    answers point queries in device pixels. The tab document's size over its
+    container's, to the nearest 120th, is the scale its content is divided
+    by, whether the browser started at that scale or was moved to it. The
+    hit test of a page node asks Chromium in device pixels and compares every
+    node it walks in that node's own unit, so a button in the page's
+    bottom-right corner, whose device-pixel rectangle lies beyond the browser
+    controls that hold it, is reached.
 
   When those parents cannot be read in time the window is treated as
-  unproven and the action is refused as above. Known limits: a Chromium
-  started at a fractional scale has been seen still aimed in device pixels
-  (the browser fractional alignment leg fails), and X11 and Mutter keep the
-  GTK 4 page offset.
+  unproven and the action is refused as above. Known limits: at a fractional
+  scale a `--headed` click on Chromium's own controls (Reload, tabs, the
+  address bar) is refused as `pointer_hit_unproven`, because their point
+  queries answer in device pixels and a node outside web content gives no
+  scale; snapshots can mark page nodes near the right or bottom edge
+  `offscreen` although they are drawn, because their device-pixel rectangle
+  lies past the output; and X11 and Mutter keep the GTK 4 page offset.
 - **Focus.** `focus-window` and the focus step of headed ref actions activate
   the window through `zwlr_foreign_toplevel_manager_v1`; see
   `references/windows-and-lifecycle.md`. A fresh labwc seat that has never had
