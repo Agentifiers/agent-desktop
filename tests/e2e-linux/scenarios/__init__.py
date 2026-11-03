@@ -41,6 +41,7 @@ from scenarios import labwc_input
 from scenarios import labwc_overlay
 from scenarios import labwc_browser
 from scenarios import labwc_windows
+from scenarios import labwc_alignment
 from scenarios import controlled_targets
 from scenarios import gaps_decisions
 from scenarios import error_contract
@@ -55,6 +56,7 @@ __all__ = [
     "events",
     "headed_actions",
     "identity",
+    "labwc_alignment",
     "labwc_browser",
     "labwc_input",
     "labwc_overlay",

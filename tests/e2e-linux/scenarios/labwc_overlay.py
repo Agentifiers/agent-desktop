@@ -287,13 +287,17 @@ def cursor_overlay_semantic_marks_proven_only(ctx: LegContext) -> None:
 
 
 class Sampler:
-    """Captures the output again and again on a thread until stopped, for effects that last
-    only a moment. Captures are decoded only after sampling ends, so decoding never slows
-    the sampling down."""
+    """Captures the output, or one layout region of it, again and again on a thread until
+    stopped, for effects that last only a moment. Captures are decoded only after sampling
+    ends, so decoding never slows the sampling down."""
 
-    def __init__(self, ctx: LegContext):
+    def __init__(self, ctx: LegContext, region: tuple[int, int, int, int] | None = None):
         self.ctx, self.captured, self.done = ctx, [], threading.Event()
-        self.output = output_name(ctx)
+        if region is None:
+            self.source = ["-o", output_name(ctx)]
+        else:
+            x, y, width, height = region
+            self.source = ["-g", f"{x},{y} {width}x{height}"]
         self.thread = threading.Thread(target=self._run, daemon=True)
 
     def _run(self) -> None:
@@ -301,7 +305,7 @@ class Sampler:
             index = 0
             while not self.done.is_set():
                 path = Path(directory) / f"{index}.png"
-                tool(self.ctx.tier, ["grim", "-l", "0", "-o", self.output, str(path)],
+                tool(self.ctx.tier, ["grim", "-l", "0", *self.source, str(path)],
                      timeout_s=10.0)
                 self.captured.append(path.read_bytes())
                 index += 1

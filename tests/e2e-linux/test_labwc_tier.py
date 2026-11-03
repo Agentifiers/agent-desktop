@@ -113,7 +113,7 @@ class SessionTests(unittest.TestCase):
         self.assertIn(TIER, main.TIER_CHOICES)
         self.assertIn(TIER, session._INNER_WRAPPERS)
         labwc = [leg for leg in legs.REGISTRY if leg.id.startswith("labwc.")]
-        self.assertEqual(len(labwc), 20)
+        self.assertEqual(len(labwc), 24)
         self.assertTrue(all(leg.tiers == (TIER,) for leg in labwc))
         self.assertTrue(all(leg.id in legs.implementations() for leg in labwc))
         self.assertFalse([leg.id for leg in legs.REGISTRY
