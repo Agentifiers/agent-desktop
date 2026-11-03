@@ -8,6 +8,7 @@ use serde_json::json;
 use crate::system::wlroots::toplevel_match::{WindowIdentity, app_names};
 use crate::system::wlroots::window_place::{Placed, WindowPlace, locate};
 use crate::tree::placement::layout_place::LayoutPlace;
+use crate::tree::placement::reported::Reported;
 use crate::tree::{AtspiElement, Extents};
 
 /// The proved place of `frame`, whose window rectangle reads `window` and
@@ -41,6 +42,20 @@ pub(crate) fn layout_of(
     match prove_place(frame, window, title, deadline) {
         Ok(Some(place)) => LayoutPlace::Proven(place.origin()),
         Ok(None) | Err(_) => LayoutPlace::Unproven,
+    }
+}
+
+/// A window rectangle a toolkit reports at `reported`, moved to where the
+/// node is drawn by the toolkit's frame for it, which `frame` reads only
+/// when there is a rectangle to move. `None` when that frame cannot be read:
+/// the node is then not placed, as an unproven window is not.
+pub(crate) fn drawn_rect(
+    reported: Option<Extents>,
+    frame: impl FnOnce() -> Option<Reported>,
+) -> Option<Option<Extents>> {
+    match reported {
+        None => Some(None),
+        Some(rect) => frame()?.drawn(rect).map(Some),
     }
 }
 

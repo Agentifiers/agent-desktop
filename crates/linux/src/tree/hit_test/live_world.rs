@@ -199,6 +199,7 @@ impl HitWorld for LiveWorld<'_> {
         match DisplayReader.read_within(client, self.nodes.deadline) {
             StackingRead::Ready(snapshot) => Some(Windowing {
                 descent_root: self.popup_root.clone(),
+                reported: None,
                 coordinate_origin,
                 client,
                 snapshot,

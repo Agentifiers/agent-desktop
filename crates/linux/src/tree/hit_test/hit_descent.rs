@@ -8,7 +8,7 @@ mod bus_nodes;
 mod leaf_nodes;
 mod shown_nodes;
 
-pub(crate) use bus_nodes::BusNodes;
+pub(crate) use bus_nodes::{BusNodes, parent_of};
 pub(crate) use leaf_nodes::LeafNodes;
 pub(crate) use shown_nodes::ShownNodes;
 

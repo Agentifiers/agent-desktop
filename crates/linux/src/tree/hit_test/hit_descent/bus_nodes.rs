@@ -44,7 +44,11 @@ async fn string_property(
     value.downcast_ref::<&str>().ok().map(str::to_owned)
 }
 
-async fn parent_of(connection: &Connection, node: &AtspiElement) -> Option<AtspiElement> {
+/// The node `Parent` names, or `None` when it names none or cannot be read.
+pub(crate) async fn parent_of(
+    connection: &Connection,
+    node: &AtspiElement,
+) -> Option<AtspiElement> {
     let reply = call(
         connection,
         node,

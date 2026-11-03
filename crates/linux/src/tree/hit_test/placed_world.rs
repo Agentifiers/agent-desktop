@@ -19,6 +19,7 @@ use crate::system::x11::window::window_flags::WindowFlags;
 use crate::system::x11::window::window_kind::WindowKind;
 use crate::tree::AtspiElement;
 use crate::tree::placement::frame_geometry::to_pointer_frame;
+use crate::tree::placement::reported::Reported;
 
 const OWN: u32 = 1;
 /// How many proofs a cover must survive before it intercepts the pointer.
@@ -29,10 +30,14 @@ const REPAINT: std::time::Duration = std::time::Duration::from_millis(300);
 
 /// What a wlroots hit test reads: the target's facts from `facts`, the
 /// descent's nodes from `nodes`, and the frame's place from `locate`.
+/// `reported` is how the target's toolkit reports its window coordinates
+/// against where it draws it: the target's rectangle is placed where it is
+/// drawn, and the descent asks the toolkit in the space it reports in.
 pub(crate) struct Placing<W, N, L> {
     pub(crate) facts: W,
     pub(crate) nodes: N,
     pub(crate) locate: L,
+    pub(crate) reported: Reported,
 }
 
 /// The descent's nodes and the target's facts, with the target placed at
@@ -41,6 +46,7 @@ struct PlacedWorld<N> {
     nodes: N,
     facts: Facts,
     origin: (i32, i32),
+    reported: Reported,
 }
 
 impl<N: NodeSource> HitWorld for PlacedWorld<N> {
@@ -82,6 +88,7 @@ impl<N: NodeSource> HitWorld for PlacedWorld<N> {
             clients: Vec::new(),
             coordinate_origin: Some(self.origin),
             descent_root: None,
+            reported: Some(self.reported),
         })
     }
 }
@@ -110,10 +117,15 @@ where
         facts: mut reader,
         nodes,
         mut locate,
+        reported,
     } = placing;
     let Some(mut facts) = reader.facts(target, frame)? else {
         return timed_out_or_unknown(deadline);
     };
+    let Some(window) = reported.drawn(facts.window) else {
+        return Ok(HitTestResult::Unknown);
+    };
+    facts.window = window;
     let mut proofs = 0;
     let (origin, rect) = loop {
         proofs += 1;
@@ -144,6 +156,7 @@ where
         nodes,
         facts,
         origin,
+        reported,
     };
     hit_test_via(&mut world, target, frame, point, deadline)
 }

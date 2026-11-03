@@ -12,10 +12,11 @@ use crate::system::x11::window::frame_window::FrameWindow;
 use crate::system::x11::window::window_x11_state::WindowX11State;
 use crate::system::x11::{self, DisplayReader, FrameFacts, MonitorReader, MonitorSource};
 use crate::system::{ACCESSIBLE_INTERFACE, REGISTRY_ROOT_PATH, SharedBus, shell, within};
-use crate::tree::live_read::live_layout::layout_of;
+use crate::tree::live_read::live_layout::{drawn_rect, layout_of};
 use crate::tree::placement::Placement;
 use crate::tree::placement::layout_place::LayoutPlace;
 use crate::tree::placement::offscreen::{OffscreenInput, offscreen};
+use crate::tree::placement::reported::reported_frame;
 use crate::tree::properties::liveness::Liveness;
 use crate::tree::properties::node_read::{call, get_one, string_value};
 use crate::tree::properties::toolkit_trust::{read_toolkit, reports_global_position};
@@ -128,6 +129,43 @@ pub(crate) fn placement(bus: &SharedBus, element: &AtspiElement, deadline: Deadl
     placed
 }
 
+/// Places `element` on a wlroots compositor: its window's proved place, with
+/// the node's and its scroll container's window rectangles moved to where
+/// the toolkit draws them. A window no proof places, or a toolkit frame that
+/// cannot be read, leaves the node unproven.
+fn place_drawn(
+    bus: &SharedBus,
+    element: &AtspiElement,
+    title: Option<&str>,
+    placed: &mut Placement,
+    deadline: Deadline,
+) {
+    let Some(frame) = element.frame() else {
+        return;
+    };
+    let layout = layout_of(frame, placed.frame, title, deadline);
+    if layout == LayoutPlace::Unproven {
+        placed.layout = Some(layout);
+        return;
+    }
+    let toolkit = &placed.toolkit;
+    let node = drawn_rect(placed.node, || {
+        reported_frame(bus, element, frame, toolkit, deadline)
+    });
+    let container = drawn_rect(placed.container, || {
+        let container = element.scroll_container()?;
+        reported_frame(bus, container, frame, toolkit, deadline)
+    });
+    placed.layout = Some(match (node, container) {
+        (Some(node), Some(container)) => {
+            placed.node = node;
+            placed.container = container;
+            layout
+        }
+        _ => LayoutPlace::Unproven,
+    });
+}
+
 fn place(bus: &SharedBus, element: &AtspiElement, deadline: Deadline) -> Placement {
     let toolkit = toolkit_of(bus, element, deadline);
     let wlroots = crate::system::display::route::is_wlroots();
@@ -155,12 +193,7 @@ fn place(bus: &SharedBus, element: &AtspiElement, deadline: Deadline) -> Placeme
     placed.frame_iconified = read.iconified;
     if wlroots {
         if placed.frame_iconified != Some(true) {
-            placed.layout = Some(layout_of(
-                frame,
-                placed.frame,
-                read.title.as_deref(),
-                deadline,
-            ));
+            place_drawn(bus, element, read.title.as_deref(), &mut placed, deadline);
         }
         placed.wayland_unplaced = placed.layout == Some(LayoutPlace::Unproven);
         return placed;

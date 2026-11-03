@@ -140,14 +140,24 @@ fn deadline() -> Deadline {
     Deadline::after(5_000).expect("deadline")
 }
 
-fn run(world: &mut World, place: Option<&Place>, point: (i32, i32)) -> HitTestResult {
+fn run_displaced(
+    world: &mut World,
+    place: Option<&Place>,
+    point: (i32, i32),
+    reported: Reported,
+) -> HitTestResult {
     let nodes = std::mem::take(&mut world.nodes);
     let placing = Placing {
         facts: world,
         nodes,
         locate: |_: &FrameFacts| Ok(place),
+        reported,
     };
     hit_test_placed(placing, &el("/target"), &el("/frame"), point, deadline()).expect("no error")
+}
+
+fn run(world: &mut World, place: Option<&Place>, point: (i32, i32)) -> HitTestResult {
+    run_displaced(world, place, point, Reported::DRAWN)
 }
 
 #[test]
@@ -168,6 +178,39 @@ fn a_gtk4_target_reaches_at_its_window_rectangle_moved_to_the_origin() {
         })
     );
     assert!(!world.windowing_asked);
+}
+
+const PAGE: Reported = Reported {
+    scale: 1.0,
+    shift: (12, 12),
+};
+
+/// A GTK 4 target inside a stack page reads its window rectangle the page's
+/// offset further right and down than it is drawn; the frame's origin moved
+/// back by that displacement places it where it is drawn and asks the
+/// toolkit about the point in the toolkit's own window coordinates.
+#[test]
+fn a_gtk4_target_in_a_stack_page_is_placed_back_by_the_page_offset() {
+    let mut world = World::new(Some(gtk4()));
+    let place = Place::at((40, 30), Some(true));
+    assert_eq!(
+        run_displaced(&mut world, Some(&place), (130, 220), PAGE),
+        HitTestResult::ReachesTarget
+    );
+    assert_eq!(
+        place.asked.get(),
+        Some(Rect {
+            x: 128.0,
+            y: 218.0,
+            width: 80.0,
+            height: 40.0,
+        })
+    );
+    let mut undisplaced = World::new(Some(gtk4()));
+    assert_eq!(
+        run(&mut undisplaced, Some(&place), (130, 220)),
+        HitTestResult::Unknown
+    );
 }
 
 #[test]
@@ -222,6 +265,7 @@ fn chromium_button_text_at_the_point_reaches_the_leaf_button_it_belongs_to() {
         facts: &mut world,
         nodes,
         locate: |_: &FrameFacts| -> Result<Option<&Place>, AdapterError> { Ok(Some(&place)) },
+        reported: Reported::DRAWN,
     };
     let result = hit_test_placed(
         placing,
@@ -291,6 +335,7 @@ fn a_failed_proof_is_the_hit_test_failure() {
         locate: |_: &FrameFacts| -> Result<Option<&Place>, AdapterError> {
             Err(AdapterError::timeout("capture"))
         },
+        reported: Reported::DRAWN,
     };
     let error = hit_test_placed(
         placing,
@@ -317,6 +362,7 @@ fn a_cover_one_proof_sees_and_the_next_does_not_is_a_repaint() {
             proofs += 1;
             Ok(Some(if proofs == 1 { &covered } else { &shown }))
         },
+        reported: Reported::DRAWN,
     };
     let result = hit_test_placed(
         placing,

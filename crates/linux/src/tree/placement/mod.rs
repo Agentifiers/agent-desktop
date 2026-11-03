@@ -4,8 +4,11 @@ pub(crate) mod frame_geometry;
 pub(crate) mod layout_place;
 pub(super) mod node_position;
 pub(crate) mod offscreen;
+pub(crate) mod page_offset;
 pub(super) mod placed_states;
 pub(super) mod popup_position;
+pub(crate) mod reported;
+pub(crate) mod web_scale;
 
 use super::Extents;
 use super::surfaces::window_tie::WindowTie;

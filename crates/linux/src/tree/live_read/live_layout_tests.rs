@@ -71,3 +71,44 @@ fn the_refusal_without_a_frame_keeps_the_placeholder() {
 fn the_unproven_origin_is_settled_not_waited_out() {
     assert!(!origin_unproven(None).permits_retry_by_default());
 }
+
+fn rect(x: i32, y: i32, width: i32, height: i32) -> Extents {
+    Extents {
+        x,
+        y,
+        width,
+        height,
+    }
+}
+
+#[test]
+fn a_node_in_a_stack_page_is_drawn_back_by_the_page_offset() {
+    let page = Reported {
+        scale: 1.0,
+        shift: (12, 12),
+    };
+    assert_eq!(
+        drawn_rect(Some(rect(314, 532, 132, 44)), || Some(page)),
+        Some(Some(rect(302, 520, 132, 44)))
+    );
+    assert_eq!(
+        drawn_rect(Some(rect(302, 520, 132, 44)), || Some(Reported::DRAWN)),
+        Some(Some(rect(302, 520, 132, 44)))
+    );
+}
+
+#[test]
+fn an_unread_frame_leaves_the_node_unplaced() {
+    assert_eq!(drawn_rect(Some(rect(314, 532, 132, 44)), || None), None);
+}
+
+#[test]
+fn no_rectangle_reads_no_frame() {
+    let read = std::cell::Cell::new(false);
+    let drawn = drawn_rect(None, || {
+        read.set(true);
+        Some(Reported::DRAWN)
+    });
+    assert_eq!(drawn, Some(None));
+    assert!(!read.get());
+}

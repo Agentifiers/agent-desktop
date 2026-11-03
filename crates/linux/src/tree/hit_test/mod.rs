@@ -8,6 +8,7 @@ use super::hit_test::hit_guard::{admits, aimable, pixel};
 use super::hit_test::hit_occlusion::occlusion;
 use super::hit_test::hit_verdict::{Landing, Standing, Verdict, decide, needs_landing};
 use super::placement::frame_geometry::{calibrate, to_pointer_frame, window_point};
+use super::placement::reported::{Reported, reported_frame};
 use super::properties::toolkit_trust::{
     reports_global_position, stops_above_target, trusts_descent, trusts_same_window_landing,
 };
@@ -46,6 +47,9 @@ pub(crate) struct Windowing {
     pub(crate) coordinate_origin: Option<(i32, i32)>,
     /// L41-25: a proved popup descends from its own accessible subtree.
     pub(crate) descent_root: Option<AtspiElement>,
+    /// How the toolkit reports the target against where it draws it, when
+    /// the window coordinates the descent asks in are not the drawn ones.
+    pub(crate) reported: Option<Reported>,
 }
 
 /// Everything a hit test reads. The bus implements it; a test substitutes
@@ -134,7 +138,11 @@ pub(crate) fn hit_test_via<W: HitWorld>(
     else {
         return Ok(HitTestResult::Unknown);
     };
-    let Some(window_at) = window_point(calibrated.window_origin, point) else {
+    let Some(window_at) = window_point(calibrated.window_origin, point).and_then(|drawn| {
+        windowing
+            .reported
+            .map_or(Some(drawn), |reported| reported.reported_point(drawn))
+    }) else {
         return Ok(HitTestResult::Unknown);
     };
     if !admits(calibrated.rect, point) {
@@ -210,6 +218,10 @@ pub(crate) fn pointer_hit_test(
     let connection = bus.get(deadline)?.inner().clone();
     let mut world = live_world::LiveWorld::new(&connection, deadline);
     if crate::system::display::route::is_wlroots() {
+        let toolkit = crate::tree::live_read::live_offscreen::toolkit_of(bus, target, deadline);
+        let Some(reported) = reported_frame(bus, target, frame, &toolkit, deadline) else {
+            return Ok(HitTestResult::Unknown);
+        };
         let locate = |facts: &FrameFacts| {
             let window =
                 crate::tree::surfaces::window_extents::read_window_extents(bus, frame, deadline);
@@ -232,6 +244,7 @@ pub(crate) fn pointer_hit_test(
                 },
             },
             locate,
+            reported,
         };
         return placed_world::hit_test_placed(placing, target, frame, pixel, deadline)
             .map_err(|error| live_world::stopped_aware_for(error, frame));
