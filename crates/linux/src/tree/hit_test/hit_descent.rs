@@ -6,10 +6,12 @@ use crate::tree::{AtspiElement, Extents};
 
 mod bus_nodes;
 mod leaf_nodes;
+mod reported_nodes;
 mod shown_nodes;
 
 pub(crate) use bus_nodes::{BusNodes, parent_of};
 pub(crate) use leaf_nodes::LeafNodes;
+pub(crate) use reported_nodes::{ReportedNodes, ReportedScope};
 pub(crate) use shown_nodes::ShownNodes;
 
 /// How many `GetAccessibleAtPoint` levels one descent follows, and how many

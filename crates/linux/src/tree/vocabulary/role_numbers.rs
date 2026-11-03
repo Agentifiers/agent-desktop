@@ -61,3 +61,8 @@ pub(crate) fn is_bulk_container(role: Option<u32>) -> bool {
 pub(crate) fn is_web_document(role: Option<u32>) -> bool {
     matches!(role, Some(DOCUMENT_WEB | DOCUMENT_FRAME))
 }
+
+/// Whether a role name, as `GetRoleName` answers it, opens a web document.
+pub(crate) fn names_web_document(role: Option<&str>) -> bool {
+    matches!(role, Some("document web" | "document frame"))
+}

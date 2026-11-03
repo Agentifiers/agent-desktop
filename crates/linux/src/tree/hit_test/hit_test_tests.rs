@@ -81,7 +81,6 @@ pub(crate) fn windowing(origin: (i32, i32), above: Vec<StackedWindow>) -> Window
     stack.extend(above);
     Windowing {
         descent_root: None,
-        reported: None,
         coordinate_origin: None,
         client: CLIENT,
         snapshot: StackingSnapshot {

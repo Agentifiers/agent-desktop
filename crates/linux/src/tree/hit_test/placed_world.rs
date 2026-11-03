@@ -7,7 +7,7 @@
 
 use agent_desktop_core::{AdapterError, Deadline, HitTestResult, Rect};
 
-use super::hit_descent::NodeSource;
+use super::hit_descent::{NodeSource, ReportedNodes, ReportedScope};
 use super::{Facts, HitWorld, Windowing, hit_test_via, timed_out_or_unknown};
 use crate::system::wlroots::window_place::Placed;
 use crate::system::x11::FrameExtents;
@@ -20,6 +20,7 @@ use crate::system::x11::window::window_kind::WindowKind;
 use crate::tree::AtspiElement;
 use crate::tree::placement::frame_geometry::to_pointer_frame;
 use crate::tree::placement::reported::Reported;
+use crate::tree::properties::toolkit_trust::{ToolkitKind, kind};
 
 const OWN: u32 = 1;
 /// How many proofs a cover must survive before it intercepts the pointer.
@@ -32,7 +33,8 @@ const REPAINT: std::time::Duration = std::time::Duration::from_millis(300);
 /// descent's nodes from `nodes`, and the frame's place from `locate`.
 /// `reported` is how the target's toolkit reports its window coordinates
 /// against where it draws it: the target's rectangle is placed where it is
-/// drawn, and the descent asks the toolkit in the space it reports in.
+/// drawn, and the descent runs in drawn coordinates over nodes that ask the
+/// toolkit in the space it reports in ([`ReportedNodes`]).
 pub(crate) struct Placing<W, N, L> {
     pub(crate) facts: W,
     pub(crate) nodes: N,
@@ -43,10 +45,9 @@ pub(crate) struct Placing<W, N, L> {
 /// The descent's nodes and the target's facts, with the target placed at
 /// the proved origin and its window alone on the screen.
 struct PlacedWorld<N> {
-    nodes: N,
+    nodes: ReportedNodes<N>,
     facts: Facts,
     origin: (i32, i32),
-    reported: Reported,
 }
 
 impl<N: NodeSource> HitWorld for PlacedWorld<N> {
@@ -88,7 +89,6 @@ impl<N: NodeSource> HitWorld for PlacedWorld<N> {
             clients: Vec::new(),
             coordinate_origin: Some(self.origin),
             descent_root: None,
-            reported: Some(self.reported),
         })
     }
 }
@@ -152,11 +152,15 @@ where
         }
     };
     facts.screen = rect;
+    let scope = if kind(&facts.toolkit) == ToolkitKind::Chromium {
+        ReportedScope::WebContent
+    } else {
+        ReportedScope::Window
+    };
     let mut world = PlacedWorld {
-        nodes,
+        nodes: ReportedNodes::new(nodes, reported, scope, frame),
         facts,
         origin,
-        reported,
     };
     hit_test_via(&mut world, target, frame, point, deadline)
 }
@@ -164,3 +168,7 @@ where
 #[cfg(test)]
 #[path = "placed_world_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "placed_world_web_tests.rs"]
+mod web_tests;
