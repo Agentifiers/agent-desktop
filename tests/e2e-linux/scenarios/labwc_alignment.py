@@ -36,6 +36,8 @@ DART_BOX = (-20, -20, 60, 64)
 MAGENTA = (255, 0, 255)
 WAITING = "hit none"
 TARGET = "Target page"
+FAR = "Far corner"
+FAR_SIZE = (120, 40)
 PAGE = f"""<!doctype html>
 <html><head><title>Alignment Page</title><style>
 html, body {{ margin: 0; padding: 0; background: #ffffff; }}
@@ -43,16 +45,25 @@ html, body {{ margin: 0; padding: 0; background: #ffffff; }}
 #target {{ position: absolute; left: 160px; top: 180px; width: 240px; height: 90px; margin: 0;
            padding: 0; border: none; border-radius: 0; outline: none; background: #ff00ff;
            color: #000000; font-size: 20px; }}
+#far {{ position: fixed; right: 48px; bottom: 12px; width: {FAR_SIZE[0]}px;
+        height: {FAR_SIZE[1]}px; margin: 0; padding: 0; border: none; border-radius: 0;
+        outline: none; background: #00ffff; color: #000000; font-size: 14px; }}
 </style><script>
 let clicks = 0;
+let farClicks = 0;
 function hit(event) {{
   clicks += 1;
   document.getElementById('hit').textContent =
     'hit ' + clicks + ' ' + event.offsetX + ',' + event.offsetY;
 }}
+function farHit(event) {{
+  farClicks += 1;
+  document.title = 'far ' + farClicks + ' ' + event.offsetX + ',' + event.offsetY;
+}}
 </script></head><body>
 <h1 id="hit">{WAITING}</h1>
 <button id="target" onclick="hit(event)">{TARGET}</button>
+<button id="far" onclick="farHit(event)">{FAR}</button>
 </body></html>
 """
 
@@ -265,6 +276,31 @@ def landing(root, count: int) -> tuple[float, float] | None:
     return None
 
 
+def far_landing(frame) -> tuple[float, float] | None:
+    """Where the far button saw its first click, relative to its corner, from the window title
+    its page sets."""
+    prefix, name = "far 1 ", frame.name
+    if not name.startswith(prefix):
+        return None
+    x, _, y = name[len(prefix):].partition(" ")[0].partition(",")
+    return float(x), float(y)
+
+
+def far_click(ctx: LegContext, session_id: str, tree, frame) -> str:
+    """A headed click on the button in the page's bottom-right corner, which at a fractional
+    scale Chromium reports in device pixels beyond the browser controls that hold it, lands on
+    its centre by the offsets the page writes into its title."""
+    ref = find_ref(tree, name=FAR, role="button")
+    require(ref is not None, "the far page button has no ref")
+    command(ctx, ["--session", session_id, "click", ref], headed=True)
+    hit = raw.poll(lambda: far_landing(frame), SETTLE_S)
+    require(hit is not None, f"the far page button saw no trusted click: {frame.name!r}")
+    centre = (FAR_SIZE[0] / 2, FAR_SIZE[1] / 2)
+    require(max(abs(hit[0] - centre[0]), abs(hit[1] - centre[1])) <= TIP_PX,
+            f"the headed click landed {hit} from the far button's corner, its centre is {centre}")
+    return frame.name
+
+
 def _chromium_aligned(ctx: LegContext, fractional: bool) -> None:
     with output_scale(ctx, fractional) as output, \
             tempfile.TemporaryDirectory(prefix="chromium-", dir=ctx.tier.runtime_dir) as directory:
@@ -277,6 +313,8 @@ def _chromium_aligned(ctx: LegContext, fractional: bool) -> None:
             before = changed(read, (WAITING,), seconds=20)
             ctx.before("atspi.heading", before)
             frame = next(node for node in root.children() if node.role in FRAME_ROLES)
+            title = frame.name
+            ctx.before("atspi.title", title)
             window = encode_product_id(frame.bus, frame.path)
             command(ctx, ["maximize"], window_id=window)
             command(ctx, ["focus-window", "--window-id", window])
@@ -294,7 +332,8 @@ def _chromium_aligned(ctx: LegContext, fractional: bool) -> None:
                 ctx.before("pixels.dart", len(check.dart(check.base)))
                 snapshot = command(ctx, ["--session", session_id, "snapshot", "-i",
                                          "--max-depth", "50"], headed=False, window_id=window)
-                ref = find_ref((snapshot.data or {}).get("tree"), name=TARGET, role="button")
+                tree = (snapshot.data or {}).get("tree")
+                ref = find_ref(tree, name=TARGET, role="button")
                 require(ref is not None, "the page button has no ref")
                 outline, last = check.framed(ref, headed=False)
                 check.check_outline(outline)
@@ -310,6 +349,7 @@ def _chromium_aligned(ctx: LegContext, fractional: bool) -> None:
                 require(max(abs(point[0] - centre[0]), abs(point[1] - centre[1])) <= TIP_PX,
                         f"the headed click landed at {point}, the button's centre is {centre}")
                 ctx.after("atspi.heading", read())
+                ctx.after("atspi.title", far_click(ctx, session_id, tree, frame))
                 ctx.after("pixels.outline", outline)
                 ctx.after("pixels.dart", (semantic, headed))
                 move(ctx, session_id, check.park)
@@ -322,6 +362,7 @@ def _chromium_aligned(ctx: LegContext, fractional: bool) -> None:
             require(len(reload) == 1, f"expected one raw Reload button, found {len(reload)}")
             reload[0].do_action("press") or reload[0].do_action("click")
             ctx.restored("atspi.heading", changed(read, before, seconds=10))
+            ctx.restored("atspi.title", changed(lambda: frame.name, title, seconds=10))
         finally:
             browser.stop()
 
